@@ -1,0 +1,178 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Joint.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 1/13/13.
+//  Copyright (c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "joints/Joint.h"
+
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
+#include "entities/SolidEntity.h"
+
+namespace amphix
+{
+
+Joint::Joint(std::string_view uniqueName, bool collideLinkedEntities)
+{
+    name_ = SimulationApp::GetApp()->GetSimulationManager()->GetNameManager()->AddName(uniqueName);
+    collisionEnabled_ = collideLinkedEntities;
+    jSolidA_ = nullptr;
+    jSolidB_ = nullptr;
+}
+
+Joint::~Joint()
+{
+    if(SimulationApp::GetApp() != nullptr)
+        SimulationApp::GetApp()->GetSimulationManager()->GetNameManager()->RemoveName(name_);
+}
+
+bool Joint::IsMultibodyJoint()
+{
+    return (constraint_ == nullptr) && (mbConstraint_ != nullptr);
+}
+
+const std::string& Joint::GetName() const
+{
+    return name_;
+}
+
+Scalar Joint::GetFeedback(unsigned int dof)
+{
+    if(dof > 5)
+        return Scalar(0);
+    
+    if(constraint_ != nullptr)
+    {
+        btJointFeedback* fb = constraint_->getJointFeedback();
+        if(dof < 3)
+            return fb->m_appliedForceBodyA[dof];
+        else
+            return fb->m_appliedTorqueBodyA[dof-3];
+    }
+    else if(mbConstraint_ != nullptr)
+    {
+        return mbConstraint_->getAppliedImpulse(dof);
+    }
+    else
+        return Scalar(0);
+}
+
+SolidEntity* Joint::GetSolidA()
+{
+    return jSolidA_;
+}
+
+SolidEntity* Joint::GetSolidB()
+{
+    return jSolidB_;
+}
+
+void Joint::AddToSimulation(SimulationManager* sm)
+{
+    if(constraint_ != nullptr)
+    {
+        //Force feedback
+        btJointFeedback* fb = new btJointFeedback();
+        constraint_->enableFeedback(true);
+        constraint_->setJointFeedback(fb);
+
+        //Breaking
+        constraint_->setBreakingImpulseThreshold(BT_LARGE_FLOAT);
+
+        //Solver setup
+        Scalar erp, stopErp;
+        sm->GetJointErp(erp, stopErp);
+
+        if(constraint_->getConstraintType() == D6_SPRING_2_CONSTRAINT_TYPE)
+        {
+            for(int i=0; i<6; ++i) // Go through all axes
+            {
+                constraint_->setParam(BT_CONSTRAINT_ERP, erp, i);
+                constraint_->setParam(BT_CONSTRAINT_STOP_ERP, stopErp, i);
+                constraint_->setParam(BT_CONSTRAINT_CFM, 0.0, i);
+                constraint_->setParam(BT_CONSTRAINT_STOP_CFM, 0.0, i);
+            }
+        }
+        else if (constraint_->getConstraintType() == D6_CONSTRAINT_TYPE) // Generic 6DOF constraint does not support ERP
+        {
+            for(int i=0; i<6; ++i) // Go through all axes
+            {
+                constraint_->setParam(BT_CONSTRAINT_STOP_ERP, stopErp, i);
+                constraint_->setParam(BT_CONSTRAINT_CFM, 0.0, i);
+                constraint_->setParam(BT_CONSTRAINT_STOP_CFM, 0.0, i);
+            }
+        }
+        else // Use default axis
+        {
+            constraint_->setParam(BT_CONSTRAINT_ERP, erp);
+            constraint_->setParam(BT_CONSTRAINT_STOP_ERP, stopErp); //Avoid explosion by softening the joint limits
+            constraint_->setParam(BT_CONSTRAINT_CFM, 0.0);
+            constraint_->setParam(BT_CONSTRAINT_STOP_CFM, 0.0);
+        }
+    
+        //Add joint to dynamics world
+        sm->GetDynamicsWorld()->addConstraint(constraint_.get(), !collisionEnabled_);
+    }
+    else if(mbConstraint_ != nullptr)
+    {
+        Scalar erp, stopErp;
+        sm->GetJointErp(erp, stopErp);
+        mbConstraint_->setErp(erp);
+        sm->GetDynamicsWorld()->addMultiBodyConstraint(mbConstraint_.get());
+        if(!collisionEnabled_)
+            SimulationApp::GetApp()->GetSimulationManager()->DisableCollision(jSolidA_, jSolidB_);
+    }
+}
+
+void Joint::RemoveFromSimulation(SimulationManager* sm)
+{
+    if(constraint_ != nullptr)
+    {
+        delete constraint_->getJointFeedback();
+        sm->GetDynamicsWorld()->removeConstraint(constraint_.get());
+    }
+    else if(mbConstraint_ != nullptr)
+    {
+        sm->GetDynamicsWorld()->removeMultiBodyConstraint(mbConstraint_.get());
+        if(!collisionEnabled_)
+            SimulationApp::GetApp()->GetSimulationManager()->EnableCollision(jSolidA_, jSolidB_);
+    }
+}
+
+void Joint::ApplyDamping()
+{
+    //Not applicable.
+}
+    
+bool Joint::SolvePositionIC(Scalar linearTolerance, Scalar angularTolerance)
+{
+    return true; //Nothing to solve
+}
+
+std::vector<Renderable> Joint::Render()
+{
+    std::vector<Renderable> items(0);
+    return items;
+}
+    
+}

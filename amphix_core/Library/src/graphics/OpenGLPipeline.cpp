@@ -1,0 +1,774 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  OpenGLPipeline.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 30/03/2014.
+//  Copyright(c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "graphics/OpenGLPipeline.h"
+
+#include <algorithm>
+#include "core/SimulationManager.h"
+#include "graphics/OpenGLState.h"
+#include "graphics/GLSLShader.h"
+#include "graphics/OpenGLContent.h"
+#include "graphics/OpenGLOcean.h"
+#include "graphics/OpenGLTrackball.h"
+#include "graphics/OpenGLCamera.h"
+#include "graphics/OpenGLRealCamera.h"
+#include "graphics/OpenGLDepthCamera.h"
+#include "graphics/OpenGLThermalCamera.h"
+#include "graphics/OpenGLOpticalFlowCamera.h"
+#include "graphics/OpenGLSegmentationCamera.h"
+#include "graphics/OpenGLEventBasedCamera.h"
+#include "graphics/OpenGLSonar.h"
+#include "graphics/OpenGLAtmosphere.h"
+#include "graphics/OpenGLLight.h"
+#include "graphics/OpenGLOceanParticles.h"
+#include "utils/SystemUtil.hpp"
+#include "entities/forcefields/Ocean.h"
+#include "entities/forcefields/Atmosphere.h"
+#include "core/GraphicalSimulationApp.h"
+
+namespace amphix
+{
+
+OpenGLPipeline::OpenGLPipeline(RenderSettings s, HelperSettings h) : rSettings_(s), hSettings_(h)
+{
+    drawingQueueMutex_ = SDL_CreateMutex();
+    
+    //Set default OpenGL options
+    cInfo("Initialising OpenGL rendering pipeline...");
+     
+    //Load shaders and create rendering buffers
+    cInfo("Loading shaders...");
+    OpenGLAtmosphere::Init();
+    OpenGLCamera::Init(rSettings_);
+    OpenGLDepthCamera::Init();
+    OpenGLThermalCamera::Init();
+    OpenGLOpticalFlowCamera::Init();
+    OpenGLSegmentationCamera::Init();
+    OpenGLEventBasedCamera::Init();
+    OpenGLSonar::Init();
+    OpenGLOceanParticles::Init();
+    content_ = std::make_unique<OpenGLContent>();
+    
+    //Create display framebuffer
+    glGenFramebuffers(1, &screenFBO_);
+    OpenGLState::BindFramebuffer(screenFBO_);
+    glGenTextures(1, &screenTex_);
+    OpenGLState::BindTexture(TEX_BASE, GL_TEXTURE_2D, screenTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, rSettings_.windowW, rSettings_.windowH, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); //Cheaper/better gaussian blur for GUI background
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); //Cheaper/better gaussian blur for GUI background
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTex_, 0);
+    OpenGLState::UnbindTexture(TEX_BASE);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if(status != GL_FRAMEBUFFER_COMPLETE)
+        cError("Display FBO initialization failed!");
+    OpenGLState::BindFramebuffer(0);
+    lastSimTime_ = Scalar(-1);
+}
+
+OpenGLPipeline::~OpenGLPipeline()
+{
+    OpenGLCamera::Destroy();
+    OpenGLDepthCamera::Destroy();
+    OpenGLThermalCamera::Destroy();
+    OpenGLOpticalFlowCamera::Destroy();
+    OpenGLSegmentationCamera::Destroy();
+    OpenGLEventBasedCamera::Destroy();
+    OpenGLSonar::Destroy();
+    OpenGLOceanParticles::Destroy();
+    OpenGLLight::Destroy();
+    
+    glDeleteTextures(1, &screenTex_);
+    glDeleteFramebuffers(1, &screenFBO_);
+    SDL_DestroyMutex(drawingQueueMutex_);
+}
+
+RenderSettings OpenGLPipeline::GetRenderSettings() const
+{
+    return rSettings_;
+}
+    
+HelperSettings& OpenGLPipeline::GetHelperSettings()
+{
+    return hSettings_;
+}
+    
+GLuint OpenGLPipeline::GetScreenTexture()
+{
+    return screenTex_;
+}
+
+SDL_mutex* OpenGLPipeline::GetDrawingQueueMutex()
+{
+    return drawingQueueMutex_;
+}
+    
+OpenGLContent* OpenGLPipeline::GetContent()
+{
+    return content_.get();
+}
+
+void OpenGLPipeline::AddToDrawingQueue(const Renderable& r)
+{
+    drawingQueue_.push_back(r);
+}
+
+void OpenGLPipeline::AddToDrawingQueue(const std::vector<Renderable>& r)
+{
+    drawingQueue_.insert(drawingQueue_.end(), r.begin(), r.end());
+}
+
+void OpenGLPipeline::AddToSelectedDrawingQueue(const std::vector<Renderable>& r)
+{
+    selectedDrawingQueue_.insert(selectedDrawingQueue_.end(), r.begin(), r.end());
+}
+
+void OpenGLPipeline::PurgeDrawingQueue()
+{
+    drawingQueue_.clear();
+}
+
+void OpenGLPipeline::PurgeSelectedDrawingQueue()
+{
+    selectedDrawingQueue_.clear();
+}
+
+bool OpenGLPipeline::IsDrawingQueueEmpty()
+{
+    return drawingQueue_.empty();
+}
+    
+void OpenGLPipeline::PerformDrawingQueueCopy(SimulationManager* sim)
+{
+    SDL_LockMutex(drawingQueueMutex_);
+
+    //Update vision sensor transforms and copy generated data to ensure consistency
+    glMemoryBarrier(GL_PIXEL_BUFFER_BARRIER_BIT);
+    for(size_t i=0; i < content_->GetViewsCount(); ++i)
+        content_->GetView(i)->UpdateTransform();
+    //Update light transforms to ensure consistency
+    for(size_t i=0; i < content_->GetLightsCount(); ++i)
+        content_->GetLight(i)->UpdateTransform();
+    //Update ocean currents for particle systems
+    Ocean* ocean = sim->GetOcean();
+    if(ocean != nullptr) ocean->UpdateVelocityFieldsData();
+
+    if(!drawingQueue_.empty())
+    {
+        drawingQueueCopy_.clear();
+        selectedDrawingQueueCopy_.clear();
+        //Double buffering
+        drawingQueueCopy_.insert(drawingQueueCopy_.end(), drawingQueue_.begin(), drawingQueue_.end());
+        selectedDrawingQueueCopy_.insert(selectedDrawingQueueCopy_.end(), selectedDrawingQueue_.begin(), selectedDrawingQueue_.end());
+        //Enable update of drawing queue by clearing old queue
+        drawingQueue_.clear(); 
+        selectedDrawingQueue_.clear();
+    }
+
+    SDL_UnlockMutex(drawingQueueMutex_);
+
+    //Sort objects by material to reduce uniform/texture switching
+    std::sort(drawingQueueCopy_.begin(), drawingQueueCopy_.end(), Renderable::SortByMaterial);
+}
+
+void OpenGLPipeline::DrawDisplay()
+{
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, screenFBO_);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, rSettings_.windowW, rSettings_.windowH, 0, 0, rSettings_.windowW, rSettings_.windowH, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+}
+
+void OpenGLPipeline::DrawObjects()
+{
+    for(size_t i=0; i<drawingQueueCopy_.size(); ++i)
+    {
+		if (drawingQueueCopy_[i].type == RenderableType::SOLID)
+        {
+			content_->DrawObject(drawingQueueCopy_[i].objectId, drawingQueueCopy_[i].lookId, drawingQueueCopy_[i].model);
+        }
+        else if(drawingQueueCopy_[i].type == RenderableType::CABLE)
+        {
+            auto nodes = drawingQueueCopy_[i].GetDataAsCableNodes();
+            content_->DrawCable(drawingQueueCopy_[i].objectId, drawingQueueCopy_[i].model[0][0], *nodes, drawingQueueCopy_[i].lookId);
+        }
+    }
+}
+
+void OpenGLPipeline::DrawLights()
+{
+    for(size_t i=0; i<content_->GetLightsCount(); ++i)
+        content_->DrawLightSource(i);
+}
+    
+void OpenGLPipeline::DrawHelpers()
+{
+    //Coordinate systems
+    if(hSettings_.showCoordSys)
+    {
+        content_->DrawCoordSystem(glm::mat4(1.f), 1.f);
+        
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            if(drawingQueueCopy_[h].type == RenderableType::SOLID_CS)
+                content_->DrawCoordSystem(drawingQueueCopy_[h].model, 0.25f);
+        }
+    }
+    
+    //Discrete and multibody joints
+    if(hSettings_.showJoints)
+    {
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            if(drawingQueueCopy_[h].type == RenderableType::MULTIBODY_AXIS)
+                content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.5f,1.f,1.f), drawingQueueCopy_[h].model);
+            else if(drawingQueueCopy_[h].type == RenderableType::JOINT_LINES)
+                content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.5f,1.f,1.f), drawingQueueCopy_[h].model);
+            else if(drawingQueueCopy_[h].type == RenderableType::PATH_POINTS)
+                content_->DrawPrimitives(PrimitiveType::POINTS, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.5f,1.f,1.f), drawingQueueCopy_[h].model);
+            else if(drawingQueueCopy_[h].type == RenderableType::PATH_LINE_STRIP)
+                content_->DrawPrimitives(PrimitiveType::LINE_STRIP, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.5f,1.f,1.f), drawingQueueCopy_[h].model);
+        }
+    }
+    
+    //Sensors
+    if(hSettings_.showSensors)
+    {
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            if(drawingQueueCopy_[h].type == RenderableType::SENSOR_CS)
+                content_->DrawCoordSystem(drawingQueueCopy_[h].model, 0.25f);
+            else if(drawingQueueCopy_[h].type == RenderableType::SENSOR_POINTS)
+                content_->DrawPrimitives(PrimitiveType::POINTS, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,1.f,0,1.f), drawingQueueCopy_[h].model);
+            else if(drawingQueueCopy_[h].type == RenderableType::SENSOR_LINES)
+                content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,1.f,0,1.f), drawingQueueCopy_[h].model);
+            else if(drawingQueueCopy_[h].type == RenderableType::SENSOR_LINE_STRIP)
+                content_->DrawPrimitives(PrimitiveType::LINE_STRIP, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,1.f,0,1.f), drawingQueueCopy_[h].model);
+        }
+    }
+    
+    //Actuators
+    if(hSettings_.showActuators)
+    {
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            if(drawingQueueCopy_[h].type == RenderableType::ACTUATOR_LINES)
+                content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.5f,0,1.f), drawingQueueCopy_[h].model);
+        }
+    }
+    
+    //Fluid dynamics
+    if(hSettings_.showFluidDynamics)
+    {
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            switch(drawingQueueCopy_[h].type)
+            {
+                case RenderableType::HYDRO_CS:
+                    content_->DrawEllipsoid(drawingQueueCopy_[h].model, glm::vec3(0.005f), glm::vec4(0.3f, 0.7f, 1.f, 1.f));
+                    break;
+                    
+                case RenderableType::HYDRO_CYLINDER:
+                    content_->DrawCylinder(drawingQueueCopy_[h].model, drawingQueueCopy_[h].GetDataAsPoints().get()->at(0), glm::vec4(0.2f, 0.5f, 1.f, 1.f));
+                    break;
+                    
+                case RenderableType::HYDRO_ELLIPSOID:
+                    content_->DrawEllipsoid(drawingQueueCopy_[h].model, drawingQueueCopy_[h].GetDataAsPoints().get()->at(0), glm::vec4(0.2f, 0.5f, 1.f, 1.f));
+                    break;
+                    
+                case RenderableType::HYDRO_POINTS:
+                    content_->DrawPrimitives(PrimitiveType::POINTS, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.3f, 0.7f, 1.f, 1.f), drawingQueueCopy_[h].model);
+                    break;
+                    
+                case RenderableType::HYDRO_LINES:
+                    content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.2f, 0.5f, 1.f, 1.f), drawingQueueCopy_[h].model);
+                    break;
+                    
+                case RenderableType::HYDRO_LINE_STRIP:
+                    content_->DrawPrimitives(PrimitiveType::LINE_STRIP, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.2f, 0.5f, 1.f, 1.f), drawingQueueCopy_[h].model);
+                    break;
+
+                case RenderableType::HYDRO_TRIANGLES:
+                    content_->DrawPrimitives(PrimitiveType::TRIANGLES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.2f, 0.5f, 1.f, 1.f), drawingQueueCopy_[h].model);
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+    }
+    
+    //Forces
+    if(hSettings_.showForces)
+    {
+        for(size_t h=0; h<drawingQueueCopy_.size(); ++h)
+        {
+            switch(drawingQueueCopy_[h].type)
+            {
+                case RenderableType::FORCE_BUOYANCY:
+                    content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.f,0.f,1.f,1.f), drawingQueueCopy_[h].model);
+                    break;
+        
+                case RenderableType::FORCE_LINEAR_DRAG:
+                    content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(0.f,1.f,1.f,1.f), drawingQueueCopy_[h].model);
+                    break;
+                    
+                case RenderableType::FORCE_QUADRATIC_DRAG:
+                    content_->DrawPrimitives(PrimitiveType::LINES, drawingQueueCopy_[h].GetDataAsPoints().get(), glm::vec4(1.f,0.f,1.f,1.f), drawingQueueCopy_[h].model);
+                    break;
+        
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+void OpenGLPipeline::Render(SimulationManager* sim)
+{	
+    //Update time step for animation purposes
+    Scalar now = sim->GetSimulationTime();
+    Scalar dt = now-lastSimTime_;
+    lastSimTime_ = now;
+
+    //Double-buffering of drawing queue
+    PerformDrawingQueueCopy(sim);
+	
+    //Choose rendering mode
+    unsigned int renderMode = 0; //Defaults to rendering without ocean
+    Ocean* ocean = sim->GetOcean();
+    if(ocean != nullptr)
+    {
+        ocean->GetOpenGlOcean()->Simulate(dt);
+        renderMode = rSettings_.ocean > RenderQuality::DISABLED && ocean->IsRenderable() ? 1 : 0;
+    }
+    Atmosphere* atm = sim->GetAtmosphere();
+    OpenGLState::EnableDepthTest();
+    OpenGLState::EnableCullFace();
+    
+    //Bake shadow maps for lights (independent of view)
+    content_->SetupLights();
+    if(rSettings_.shadows > RenderQuality::DISABLED)
+    {
+        glCullFace(GL_FRONT);
+        glDisable(GL_DEPTH_CLAMP);
+        content_->SetDrawingMode(DrawingMode::SHADOW);
+        for(size_t i=0; i<content_->GetLightsCount(); ++i)
+        {
+            if(content_->GetLight(i)->IsActive())
+                content_->GetLight(i)->BakeShadowmap(this);
+        }
+        glEnable(GL_DEPTH_CLAMP);
+        glCullFace(GL_BACK);
+    }
+    
+    //Clear display framebuffer
+    OpenGLState::BindFramebuffer(screenFBO_);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    //Update the queue of views needing update
+    unsigned int updateCount = 0;
+    std::vector<unsigned int> viewsNoUpdate; //View that are not needing update but have to be displayed
+    for(int i=content_->GetViewsCount()-1; i >= 0; --i) //Go through views in reverse order
+    {
+        OpenGLView* view = content_->GetView(i);
+        
+        if(!view->IsEnabled()) //Skip disabled views
+            continue;
+      
+        if(view->NeedsUpdate())
+        {
+            if(view->IsContinuous()) //Has to always get updated independent from the number of views in the queue
+            {
+                if(std::find(viewsQueue_.begin(), viewsQueue_.end(), i) == viewsQueue_.end()) //Not already in the queue
+                {
+                    viewsQueue_.push_front(i);
+                    ++updateCount;
+                }
+            }
+            else // Will be updated now or in the following frames
+            {
+                if(std::find(viewsQueue_.begin(), viewsQueue_.end(), i) == viewsQueue_.end()) //Not already in the queue
+                {
+                    viewsQueue_.push_back(i);
+                    viewsNoUpdate.push_back(i);
+                }
+            }
+        }
+        else // Does not need update
+        {
+            if(std::find(viewsNoUpdate.begin(), viewsNoUpdate.end(), i) == viewsNoUpdate.end()) //Not already in the queue
+                viewsNoUpdate.push_back(i);
+        }
+    }
+
+    if(viewsQueue_.size() > content_->GetViewsCount()) // Safety condition to avoid runaway
+    {
+        updateCount = viewsQueue_.size();
+        viewsNoUpdate.clear();
+    }
+    else if(updateCount < (unsigned int)viewsQueue_.size())
+    {
+        ++updateCount;
+        auto it = std::find(viewsNoUpdate.begin(), viewsNoUpdate.end(), viewsQueue_[updateCount-1]);
+        if(it != viewsNoUpdate.end())
+            viewsNoUpdate.erase(std::find(viewsNoUpdate.begin(), viewsNoUpdate.end(), viewsQueue_[updateCount-1]));
+    }
+
+    //Loop through all views -> trackballs, cameras, depth cameras...
+    for(unsigned int i=0; i<updateCount; ++i)
+    {  
+        OpenGLState::EnableDepthTest();
+        OpenGLState::EnableCullFace();
+        OpenGLState::DisableBlend();
+        OpenGLView* view = content_->GetView(viewsQueue_[i]);
+    
+        switch(view->GetType())
+        { 
+            case ViewType::DEPTH_CAMERA:
+            {
+                OpenGLDepthCamera* camera = static_cast<OpenGLDepthCamera*>(view);
+                //Draw objects and compute depth data
+                camera->ComputeOutput(drawingQueueCopy_);
+                //Draw camera output
+                camera->DrawLDR(screenFBO_, true);
+            }
+            break;
+
+            case ViewType::THERMAL_CAMERA:
+            {
+                OpenGLThermalCamera* camera = static_cast<OpenGLThermalCamera*>(view);
+                glm::vec3 eye = camera->GetEyePosition();
+
+                if(renderMode == 1 && ocean->GetDepth(eye) > 0.f) //Camera underwater (not working)
+                {
+                    //Clear camera to water temperature
+                    OpenGLState::BindFramebuffer(camera->GetRenderFbo());
+                    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+                    glClearColor(ocean->GetOpenGlOcean()->GetWaterTemperature(), 0.f, 0.f, 0.f);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                }
+                else //Camera above water or no ocean enabled
+                {
+                    //Apply view properties
+                    std::vector<GLint> viewport = camera->GetViewport();
+                    content_->SetViewportSize(viewport[2],viewport[3]);
+                
+                    //Bake parallel-split shadowmaps for sun
+                    if(rSettings_.shadows > RenderQuality::DISABLED)
+                    {
+                        content_->SetDrawingMode(DrawingMode::SHADOW);
+                        atm->GetOpenGlAtmosphere()->BakeShadowmaps(this, camera);
+                    }
+                    atm->GetOpenGlAtmosphere()->SetupMaterialShaders();
+    
+                    //Clear main framebuffer and setup camera
+                    OpenGLState::BindFramebuffer(camera->GetRenderFbo());
+                    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+                    glClearColor(0.f, 0.f, 0.f, 0.f);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    
+                    camera->SetViewport();
+                    content_->SetCurrentView(camera);
+                    
+                    //Draw scene
+                    if(renderMode == 0) //NO OCEAN
+                    {
+                        //Render all objects
+                        content_->SetDrawingMode(DrawingMode::TEMPERATURE);
+                        DrawObjects();
+                    
+                        //Render sky (at the end to take profit of early bailing)
+                        atm->GetOpenGlAtmosphere()->DrawSkyAndSunTemperature(camera);
+                    }
+                    else if(renderMode == 1) //OCEAN
+                    {
+                        OpenGLOcean* glOcean = ocean->GetOpenGlOcean();
+                        
+                        //Update ocean for this camera
+                        if(ocean->HasWaves())
+                            glOcean->UpdateSurface(camera);
+
+                        //Rendering only above water
+                        //possible because camera near plane is (virtually) removed with logarithmic depth buffer.
+                        glOcean->DrawSurfaceTemperature(camera);
+                        //Draw all objects as above surface 
+                        //(depth testing will secure drawing only what is above water)
+                        content_->SetDrawingMode(DrawingMode::TEMPERATURE);
+                        DrawObjects();
+                        
+                        //Render sky (left for the end to only fill empty spaces)
+                        atm->GetOpenGlAtmosphere()->DrawSkyAndSunTemperature(camera);
+                    }
+                }
+                //Flip thermal image and render display texture
+                camera->ComputeOutput();
+
+                //Draw camera output
+                camera->DrawLDR(screenFBO_, true);
+            }
+            break;
+
+            case ViewType::OPTICAL_FLOW_CAMERA:
+            {
+                OpenGLOpticalFlowCamera* camera = static_cast<OpenGLOpticalFlowCamera*>(view);
+                //Draw objects and compute camera data
+                camera->ComputeOutput(drawingQueueCopy_);
+                //Draw camera output
+                camera->DrawLDR(screenFBO_, true);
+            }
+            break;
+
+            case ViewType::SEGMENTATION_CAMERA:
+            {
+                OpenGLSegmentationCamera* camera = static_cast<OpenGLSegmentationCamera*>(view);
+                //Draw objects and compute camera data
+                camera->ComputeOutput(drawingQueueCopy_, ocean);
+                //Draw camera output
+                camera->DrawLDR(screenFBO_, true);
+            }
+            break;
+            
+            case ViewType::SONAR:
+            {
+                OpenGLSonar* sonar = static_cast<OpenGLSonar*>(view);
+                //Draw objects and compute sonar data
+                sonar->ComputeOutput(drawingQueueCopy_);
+                //Draw sonar output
+                sonar->DrawLDR(screenFBO_, true);
+            }
+            break;
+
+            case ViewType::CAMERA:
+            case ViewType::TRACKBALL:
+            case ViewType::EVENT_BASED_CAMERA:
+            {
+                //Apply view properties
+                OpenGLCamera* camera = static_cast<OpenGLCamera*>(view);
+                OpenGLLight::SetCamera(camera);
+                std::vector<GLint> viewport = camera->GetViewport();
+                content_->SetViewportSize(viewport[2],viewport[3]);
+            
+                //Bake parallel-split shadowmaps for sun
+                if(rSettings_.shadows > RenderQuality::DISABLED)
+                {
+                    content_->SetDrawingMode(DrawingMode::SHADOW);
+                    atm->GetOpenGlAtmosphere()->BakeShadowmaps(this, camera);
+                }
+                atm->GetOpenGlAtmosphere()->SetupMaterialShaders();
+            
+                //Clear main framebuffer and setup camera
+                OpenGLState::BindFramebuffer(camera->GetRenderFbo());
+                camera->SetRenderBuffers(0, true, false);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+                
+                camera->SetViewport();
+                content_->SetCurrentView(camera);
+                
+                //Draw scene
+                if(renderMode == 0) //NO OCEAN
+                {
+                    //Render all objects
+                    content_->SetDrawingMode(DrawingMode::FULL);
+                    DrawObjects();
+                    DrawLights();
+
+                    //Ambient occlusion
+                    if(rSettings_.ao > RenderQuality::DISABLED)
+                        camera->DrawAO(1.0f);
+                    
+                    //Render sky (at the end to take profit of early bailing)
+                    atm->GetOpenGlAtmosphere()->DrawSkyAndSun(camera);
+                }
+                else if(renderMode == 1) //OCEAN
+                {
+                    OpenGLOcean* glOcean = ocean->GetOpenGlOcean();
+                    
+                    //Update ocean for this camera
+                    if(ocean->HasWaves())
+                        glOcean->UpdateSurface(camera);
+
+                    //Two separate rendering paths: above water and under water, 
+                    //possible because camera near plane is (virtually) removed with logarithmic depth buffer.
+                    glm::vec3 eye = camera->GetEyePosition();
+                    if(ocean->GetDepth(eye) > 0.0) //Underwater
+                    {  
+                        content_->SetDrawingMode(DrawingMode::UNDERWATER);
+                        DrawObjects();
+                        glOcean->DrawBackground(camera);
+                        glOcean->DrawBacksurface(camera);
+                        //camera->GenerateBloom();
+                        DrawLights();
+                        
+                        if(rSettings_.ssr > RenderQuality::DISABLED)
+                        {
+                            //Linear depth front faces
+                            camera->GenerateLinearDepth(true);
+                            
+                            //Linear depth back faces
+                            OpenGLState::BindFramebuffer(camera->GetPostprocessFbo());
+                            glClear(GL_DEPTH_BUFFER_BIT);
+                            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+                            glCullFace(GL_FRONT);
+                            content_->SetDrawingMode(DrawingMode::FLAT);
+                            DrawObjects();
+                            glCullFace(GL_BACK);
+                            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                            camera->GenerateLinearDepth(false);
+                            
+                            //Draw screen-space reflections
+                            camera->DrawSSR();
+                        }
+
+                        //Draw bloom effect simulating scattering
+                        //camera->DrawBloom((GLfloat)ocean->getWaterType());
+
+                        //Suspended particles only below surface
+                        glDepthMask(GL_FALSE);
+                        glOcean->DrawParticles(camera);
+                        glDepthMask(GL_TRUE);
+                        
+                    }
+                    else //Above water
+                    {
+                        content_->SetDrawingMode(DrawingMode::UNDERWATER);
+                        DrawObjects();
+                        DrawLights();
+                        glOcean->DrawBackground(camera);
+
+                        //Draw surface to back buffer
+                        camera->SetRenderBuffers(1, false, true); //Clearing color buffer
+                        camera->SetRenderBuffers(1, true, false); //Color + Normal
+                        glOcean->DrawSurface(camera);
+                        camera->SetRenderBuffers(0, false, false); //Color only
+                        
+                        //Blend surface on top of scene
+                        OpenGLState::DisableDepthTest();
+                        OpenGLState::EnableBlend();
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                        content_->DrawTexturedSAQ(camera->GetColorTexture(1));
+                        OpenGLState::DisableBlend();
+                        OpenGLState::EnableDepthTest();
+                        
+                        //Draw all objects as above surface 
+                        //(depth testing will secure drawing only what is above water)
+                        camera->SetRenderBuffers(0, true, false); //Color + Normal
+                        content_->SetDrawingMode(DrawingMode::FULL);
+                        DrawObjects();
+                        DrawLights();
+                    
+                        //Render sky (left for the end to only fill empty spaces)
+                        atm->GetOpenGlAtmosphere()->DrawSkyAndSun(camera);    
+
+                        //Postprocess
+                        if(rSettings_.ssr > RenderQuality::DISABLED)
+                        {
+                            //Linear depth front faces
+                            camera->GenerateLinearDepth(true);
+                        
+                            //Linear depth back faces
+                            OpenGLState::BindFramebuffer(camera->GetPostprocessFbo());
+                            glClear(GL_DEPTH_BUFFER_BIT);
+                            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+                            glCullFace(GL_FRONT);
+                            content_->SetDrawingMode(DrawingMode::FLAT);
+                            DrawObjects();
+                            glCullFace(GL_BACK);
+                            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                            camera->GenerateLinearDepth(false);
+                            
+                            //Draw screen-space reflections
+                            camera->DrawSSR();
+                        }
+                    }
+                }
+
+                //Special case for event-based cameras
+                if(camera->GetType() == ViewType::EVENT_BASED_CAMERA)
+                    static_cast<OpenGLEventBasedCamera*>(camera)->ComputeOutput(now);
+
+                //Drawing to the screen
+                camera->DrawLDR(screenFBO_, true);
+            
+                //Non-reallistic rendering (graphical information)
+                if(camera->GetType() == ViewType::TRACKBALL)
+                {
+                    //Overlay debugging info
+                    OpenGLState::BindFramebuffer(screenFBO_); //No depth buffer, just one color buffer
+                    content_->SetProjectionMatrix(camera->GetProjectionMatrix());
+                    content_->SetViewMatrix(camera->GetViewMatrix());
+                    OpenGLState::DisableCullFace();
+                    
+                    //Simulation debugging
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    //if(sim->getSolidDisplayMode() == DisplayMode::PHYSICAL) DrawObjects();
+                    DrawHelpers();
+                    if(hSettings_.showOceanVelocityField && ocean != NULL) ocean->GetOpenGlOcean()->DrawVelocityField(camera, 5.f);
+                    if(hSettings_.showBulletDebugInfo) sim->RenderBulletDebug();
+                    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                    
+                    //Overlay selection outline
+                    ((OpenGLTrackball*)camera)->DrawSelection(selectedDrawingQueueCopy_, screenFBO_);
+                    
+                    //Graphics debugging
+                    //if(ocean != NULL)
+                    //{
+                        //ocean->getOpenGLOcean()->ShowSpectrum(glm::vec2(512.f,512.f), glm::vec4(0.f,0.f,512.f,512.f));
+                        //ocean->getOpenGLOcean()->ShowTexture(3, glm::vec4(0,0,512,512));
+                    //}
+            
+                    //atm->getOpenGLAtmosphere()->ShowSunShadowmaps(0, 0, 0.1f);
+                    
+                    //content->DrawTexturedQuad(0,0,800,600,camera->getPostprocessTexture(0));
+                    //camera->ShowViewNormalTexture(glm::vec4(0,0,400,300));
+                    //camera->ShowSceneTexture(glm::vec4(0,200,300,200));
+                    //camera->ShowLinearDepthTexture(glm::vec4(0,0,600,500), true);
+                    //camera->ShowLinearDepthTexture(glm::vec4(0,400,300,200), false);
+                    
+                    //camera->ShowDeinterleavedDepthTexture(glm::vec4(0,400,300,200), 0);
+                    //camera->ShowDeinterleavedDepthTexture(glm::vec4(0,400,300,200), 8);
+                    //camera->ShowDeinterleavedDepthTexture(glm::vec4(0,600,300,200), 9);
+                    //camera->ShowDeinterleavedAOTexture(glm::vec4(0,600,300,200), 0);
+                    //camera->ShowAmbientOcclusion(glm::vec4(0,800,300,200));
+                    //camera->ShowDepthStencilTexture(glm::vec4(0,400,300,200)); 
+                                    
+                    OpenGLState::BindFramebuffer(0);
+                }
+            }
+            break;
+        }
+    }
+    //Draw views that are displayed but not updated
+    for(size_t i=0; i<viewsNoUpdate.size(); ++i)
+    {
+        OpenGLView* view = content_->GetView(viewsNoUpdate[i]);
+        view->DrawLDR(screenFBO_, false);
+    }
+    //Remove views drawn in this frame
+    viewsQueue_.erase(viewsQueue_.begin(), viewsQueue_.begin() + updateCount);
+}
+
+}

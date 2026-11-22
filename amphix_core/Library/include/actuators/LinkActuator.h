@@ -1,0 +1,79 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  LinkActuator.h
+//  Amphix
+//
+//  Created by Patryk Cieślak on 23/11/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "actuators/Actuator.h"
+
+namespace amphix
+{
+    //! An enum designating a type of the link actuator.
+    enum class LinkActuatorType {PROPELLER, THRUSTER, VBS, LIGHT, RUDDER, SUCTION_CUP, PUSH, SIMPLE_THRUSTER, PLUGIN};
+    
+    class SolidEntity;
+    
+    //! An abstract class representing an actuator that can be attached to a rigid body.
+    class LinkActuator : public Actuator
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name of the link actuator
+         */
+        LinkActuator(std::string_view uniqueName);
+
+        //! A destructor.
+        virtual ~LinkActuator() = default;
+        
+        //! A method used to attach the actuator to a specified rigid body.
+        /*!
+         \param solid a pointer to a rigid body
+         \param origin a transformation from the body origin to the actuator origin
+         */
+        virtual void AttachToSolid(SolidEntity* body, const Transform& origin);
+        
+		//! A method implementing the rendering of the actuator.
+        virtual std::vector<Renderable> Render() override;
+		
+        //! A method used to set the actuator origin frame.
+        /*!
+         \param origin a transformation from teh body origin to the actuator origin
+         */
+        void SetRelativeActuatorFrame(const Transform& origin);
+        
+        //! A method returning actuator frame in the world frame.
+        virtual Transform GetActuatorFrame() const;
+
+        //! A method returning the type of the actuator.
+        ActuatorType GetType() const override;
+
+        //! A method returning type of link actuator.
+        virtual LinkActuatorType GetLinkActuatorType() const = 0;
+
+    protected:
+        SolidEntity* attach_;
+        Transform o2a_;
+    };
+}

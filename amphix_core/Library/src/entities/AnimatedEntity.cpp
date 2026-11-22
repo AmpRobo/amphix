@@ -1,0 +1,318 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  AnimatedEntity.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 15/07/2020.
+//  Copyright (c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/AnimatedEntity.h"
+
+#include "core/GraphicalSimulationApp.h"
+#include "core/SimulationManager.h"
+#include "graphics/OpenGLPipeline.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj) : MovingEntity(uniqueName, "", ""), traj_(std::move(traj))
+{
+    if(traj_ == nullptr)
+        throw std::invalid_argument("Trajectory pointer cannot be null");
+
+    T_CG2O_ = T_O2C_ = T_O2G_ = I4();
+    
+    linearAcc_.setZero();
+    angularAcc_.setZero();
+
+    //Build rigid body
+    collisionShape_ = std::make_unique<btEmptyShape>();
+    BuildRigidBody(false);
+    phyObjectId_ = graObjectId_ = -1;
+}
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj, Scalar sphereRadius, const Transform& origin, std::string_view material, std::string_view look, bool collides) 
+    : MovingEntity(uniqueName, material, look), traj_(std::move(traj))
+{   
+    if(traj_ == nullptr)
+        throw std::invalid_argument("Trajectory pointer cannot be null");
+
+    T_O2C_ = T_O2G_ = I4();
+    T_CG2O_ = origin.inverse();
+
+    //Build rigid body
+    collisionShape_ = std::make_unique<btSphereShape>(sphereRadius);
+    BuildRigidBody(collides);
+
+    //Build graphical objects
+    if(SimulationApp::GetApp()->HasGraphics())
+    { 
+        std::unique_ptr<Mesh> phyMesh = OpenGLContent::BuildSphere((GLfloat)sphereRadius);
+        phyObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(phyMesh.get());
+        graObjectId_ = phyObjectId_;
+    }
+}
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj, Scalar cylinderRadius, Scalar cylinderHeight, const Transform& origin, std::string_view material, std::string_view look, bool collides)
+    : MovingEntity(uniqueName, material, look), traj_(std::move(traj))
+{
+    if(traj_ == nullptr)
+        throw std::invalid_argument("Trajectory pointer cannot be null");
+
+    T_O2C_ = T_O2G_ = I4();
+    T_CG2O_ = origin.inverse();
+
+    //Build rigid body
+    Scalar halfHeight = cylinderHeight/Scalar(2);
+    collisionShape_ = std::make_unique<btCylinderShapeZ>(Vector3(cylinderRadius, cylinderRadius, halfHeight));
+    BuildRigidBody(collides);
+
+    //Build graphical objects
+    if(SimulationApp::GetApp()->HasGraphics())
+    { 
+        std::unique_ptr<Mesh> phyMesh = OpenGLContent::BuildCylinder((GLfloat)cylinderRadius, (GLfloat)cylinderHeight);
+        phyObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(phyMesh.get());
+        graObjectId_ = phyObjectId_;
+    }
+}
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj, Vector3 boxDimensions, const Transform& origin, std::string_view material, std::string_view look, bool collides) 
+    : MovingEntity(uniqueName, material, look), traj_(std::move(traj))
+{
+    if(traj_ == nullptr)
+        throw std::invalid_argument("Trajectory pointer cannot be null");
+
+    T_O2C_ = T_O2G_ = I4();
+    T_CG2O_ = origin.inverse();
+
+    //Build rigid body
+    collisionShape_ = std::make_unique<btBoxShape>(boxDimensions/Scalar(2));
+    BuildRigidBody(collides);
+
+    //Build graphical objects
+    if(SimulationApp::GetApp()->HasGraphics())
+    { 
+        std::unique_ptr<Mesh> phyMesh = OpenGLContent::BuildBox(glm::vec3((GLfloat)boxDimensions.getX()/2.f, (GLfloat)boxDimensions.getY()/2.f, (GLfloat)boxDimensions.getZ()/2.f));
+        phyObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(phyMesh.get());
+        graObjectId_ = phyObjectId_;
+    }
+}
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj, std::string_view modelFilename, Scalar scale, const Transform& origin, std::string_view material, std::string_view look, bool collides)
+    : AnimatedEntity(uniqueName, std::move(traj), modelFilename, scale, origin, "", Scalar(1), I4(), material, look, collides)
+{
+}
+
+AnimatedEntity::AnimatedEntity(std::string_view uniqueName, std::unique_ptr<Trajectory> traj, std::string_view graphicsFilename, Scalar graphicsScale, const Transform& graphicsOrigin,
+                       std::string_view physicsFilename, Scalar physicsScale, const Transform& physicsOrigin, std::string_view material, std::string_view look, bool collides)
+    : MovingEntity(uniqueName, material, look), traj_(std::move(traj))
+{
+    if(traj_ == nullptr)
+        throw std::invalid_argument("Trajectory pointer cannot be null");
+
+    //Load geometry from files
+    std::shared_ptr<Mesh> graMesh = OpenGLContent::LoadMesh(graphicsFilename, graphicsScale, false);
+    std::shared_ptr<Mesh> phyMesh;
+    T_O2G_ = graphicsOrigin;
+    T_CG2O_ = I4();
+    
+    if(physicsFilename != "")
+    {
+        phyMesh = OpenGLContent::LoadMesh(physicsFilename, physicsScale, false);
+        T_O2C_ = physicsOrigin;
+    }
+    else
+    {
+        phyMesh = graMesh;
+        T_O2C_ = T_O2G_;
+    }
+
+    //Build rigid body
+    std::unique_ptr<btConvexHullShape> shape = std::make_unique<btConvexHullShape>();
+    for(size_t i=0; i<phyMesh->GetNumOfVertices(); ++i)
+    {
+        glm::vec3 pos = phyMesh->GetVertexPos(i);
+        Vector3 v(pos.x, pos.y, pos.z);
+        shape->addPoint(v);
+    }
+    shape->optimizeConvexHull();
+    collisionShape_ = std::move(shape);
+    BuildRigidBody(collides);
+
+    //Build graphical objects
+    if(SimulationApp::GetApp()->HasGraphics())
+    { 
+        phyObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(phyMesh.get());
+        if(graMesh != phyMesh)
+            graObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(graMesh.get());
+        else
+            graObjectId_ = phyObjectId_;
+    }
+}
+
+EntityType AnimatedEntity::GetType() const
+{
+    return EntityType::ANIMATED;
+}
+
+Transform AnimatedEntity::GetOTransform() const
+{
+    return GetCgTransform() * T_CG2O_;
+}
+
+Transform AnimatedEntity::GetCgTransform() const
+{
+    if(rigidBody_ != nullptr)
+    {
+        Transform trans;
+        rigidBody_->getMotionState()->getWorldTransform(trans);
+        return trans;
+    }
+    else
+        return Transform::getIdentity();
+}
+
+Vector3 AnimatedEntity::GetLinearVelocity() const
+{
+    if(rigidBody_ != nullptr)
+        return rigidBody_->getLinearVelocity();
+    else
+        return V0();
+}
+
+Vector3 AnimatedEntity::GetAngularVelocity() const
+{
+    if(rigidBody_ != nullptr)
+        return rigidBody_->getAngularVelocity();
+    else
+        return V0();
+}
+
+Vector3 AnimatedEntity::GetLinearVelocityInLocalPoint(const Vector3& relPos) const
+{
+    return GetLinearVelocity() + GetAngularVelocity().cross(relPos);
+}
+
+Vector3 AnimatedEntity::GetLinearAcceleration() const
+{
+    return linearAcc_;
+}
+        
+Vector3 AnimatedEntity::GetAngularAcceleration() const
+{
+    return angularAcc_;
+}
+
+Trajectory* AnimatedEntity::GetTrajectory()
+{
+    return traj_.get();
+}
+
+void AnimatedEntity::GetAabb(Vector3& min, Vector3& max)
+{
+    if(rigidBody_ != nullptr)
+        rigidBody_->getAabb(min, max);
+    else
+    {
+        min.setValue(BT_LARGE_FLOAT, BT_LARGE_FLOAT, BT_LARGE_FLOAT);
+        max.setValue(-BT_LARGE_FLOAT, -BT_LARGE_FLOAT, -BT_LARGE_FLOAT);
+    }
+}
+
+void AnimatedEntity::BuildRigidBody(bool collides)
+{
+    motionState_ = std::make_unique<btDefaultMotionState>(traj_->GetInterpolatedTransform());
+    collisionShape_->setMargin(0.0);
+    
+    btRigidBody::btRigidBodyConstructionInfo rigidBodyCI(Scalar(0), motionState_.get(), collisionShape_.get(), V0());
+    rigidBodyCI.m_friction = rigidBodyCI.m_rollingFriction = rigidBodyCI.m_restitution = Scalar(0); //not used
+    rigidBodyCI.m_linearDamping = rigidBodyCI.m_angularDamping = Scalar(0); //not used
+    rigidBodyCI.m_linearSleepingThreshold = rigidBodyCI.m_angularSleepingThreshold = Scalar(0); //not used
+    rigidBodyCI.m_additionalDamping = false;
+    
+    rigidBody_ = std::make_unique<btRigidBody>(rigidBodyCI);
+    rigidBody_->setUserPointer(this);
+    rigidBody_->setCollisionFlags(rigidBody_->getCollisionFlags() 
+                                     | btCollisionObject::CF_KINEMATIC_OBJECT 
+                                     | btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK);
+    if(!collides) rigidBody_->setCollisionFlags(rigidBody_->getCollisionFlags() | btCollisionObject::CF_NO_CONTACT_RESPONSE);
+    rigidBody_->setActivationState(DISABLE_DEACTIVATION);
+}
+
+void AnimatedEntity::AddToSimulation(SimulationManager* sm)
+{
+    if(rigidBody_ != nullptr)
+    {
+        if(rigidBody_->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) //No collisions
+            sm->GetDynamicsWorld()->addRigidBody(rigidBody_.get(), MASK_ANIMATED_NONCOLLIDING, MASK_DYNAMIC);
+        else
+            sm->GetDynamicsWorld()->addRigidBody(rigidBody_.get(), MASK_ANIMATED_COLLIDING, MASK_DYNAMIC); //Only collide with dynamic bodies
+    }
+}
+        
+void AnimatedEntity::AddToSimulation(SimulationManager* sm, const Transform& origin)
+{
+    AddToSimulation(sm);
+}
+
+void AnimatedEntity::Update(Scalar dt)
+{
+    if(traj_ == nullptr || rigidBody_ == nullptr)
+        return;
+
+    traj_->Play(dt);
+    rigidBody_->getMotionState()->setWorldTransform(traj_->GetInterpolatedTransform() *  T_CG2O_.inverse());
+    rigidBody_->setLinearVelocity(traj_->GetInterpolatedLinearVelocity());
+    rigidBody_->setAngularVelocity(traj_->GetInterpolatedAngularVelocity());    
+    SetLinearAcceleration(traj_->GetInterpolatedLinearAcceleration());
+}
+
+std::vector<Renderable> AnimatedEntity::Render()
+{
+    std::vector<Renderable> items(0);
+    
+    if(rigidBody_ != nullptr && IsRenderable())
+    {
+        Renderable item;
+        item.type = RenderableType::SOLID_CS;
+        item.model = glMatrixFromTransform(GetOTransform());
+        items.push_back(item);
+
+        if(graObjectId_ >= 0)
+        {
+            item.type = RenderableType::SOLID;
+            item.cor = glVectorFromVector(GetOTransform().getOrigin());
+            item.vel = glVectorFromVector(GetLinearVelocity());
+            item.avel = glVectorFromVector(GetAngularVelocity());
+            item.materialName = mat_.name;
+            item.objectId = dm_ == DisplayMode::GRAPHICAL ? graObjectId_ : phyObjectId_;
+            item.lookId = dm_ == DisplayMode::GRAPHICAL ? lookId_ : -1;
+            items.push_back(item);
+        }
+        
+        std::vector<Renderable> trajectoryItems = traj_->Render();
+        items.insert(items.begin(), trajectoryItems.begin(), trajectoryItems.end());
+    }
+
+    return items;
+}
+
+}

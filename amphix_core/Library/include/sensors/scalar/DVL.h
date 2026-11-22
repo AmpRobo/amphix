@@ -1,0 +1,112 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  DVL.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 30/10/2017.
+//  Copyright (c) 2017-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "sensors/scalar/LinkSensor.h"
+
+namespace amphix
+{
+    //! A class representing a Dopple velocity log (DVL) sensor with four beams.
+    class DVL : public LinkSensor
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param beamAngleDeg the angle between the beams and the vertical axis [deg]
+         \param beamPositiveZ a flag specifying if beams are pointing in the same direction as the z axis of the sensor
+         \param frequency the sampling frequency of the sensor [Hz] (-1 if updated every simulation step)
+         \param historyLength defines: -1 -> no history, 0 -> unlimited history, >0 -> history with a specified length
+         */
+        DVL(std::string_view uniqueName, Scalar beamAngleDeg, bool beamPositiveZ, Scalar frequency = Scalar(-1), int historyLength = -1);
+        
+        //! A method performing internal sensor state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        //! A method used to set the range of the sensor.
+        /*!
+         \param velocityMax the maximum measured linear velocity [m s^-1]
+         \param altitudeMin the minimum measured altitude (blanking) [m]
+         \param altitudeMax the maximum measured altitude [m]
+         */
+        void SetRange(const Vector3& velocityMax, Scalar altitudeMin, Scalar altitudeMax);
+        
+        //! A method used to set the water mass ping parameters.
+        /*!
+         \param minThickness the minimum thickness of the water layer [m]
+         \param nearBoundary the distance from the sensor to the near layer boundary [m]
+         \param farBoundary the distance from the sensor to the far layer boundary [m]
+         */
+        void SetWaterLayer(Scalar minSize, Scalar nearBoundary, Scalar farBoundary);
+
+        //! A method used to set the noise characteristics of the sensor.
+        /*!
+         \param velPercent multiplicative bottom velocity mesurement noise factor as percent of velocity
+         \param velStdDev standard deviation of the bottom velocity measurement noise
+         \param altitudeStdDev standard deviation of the altitude measurement noise
+         \param waterVelPercent multiplicative water velocity mesurement noise factor as percent of water velocity
+         \param waterVelStdDev standard deviation of the water velocity measurement noise
+         */
+        void SetNoise(Scalar velPercent, Scalar velStdDev, Scalar altitudeStdDev, Scalar waterVelPercent, Scalar waterVelStdDev);
+        
+        //! A method that returns the measurement ranges of the DVL.
+        /*!
+         \param velocityMax the output variable to store the maximum measured linear velocity [m s^-1]
+         \param altitudeMin the output variable to store the minimum measured altitude (blanking) [m]
+         \param altitudeMax the output variable to store the maximum measured altitude [m]
+         */
+        void GetRange(Vector3& velocityMax, Scalar& altitudeMin, Scalar& altitudeMax) const;
+
+        //! A method that return the angle between the beams and the vertical axis.
+        Scalar GetBeamAngle() const;
+
+        //! A method rendering the sensor representation.
+        std::vector<Renderable> Render();
+        
+        //! A method returning the type of the scalar sensor.
+        ScalarSensorType GetScalarSensorType() const override;
+
+        //! A method returning the construction info for the sensor.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the sensor based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<DVL> Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info);
+        
+    private:
+        Scalar beamAngle_;
+        bool beamPosZ_;
+        Scalar range_[4];
+        Vector3 waterLayer_;
+        Scalar addNoiseStdDev_[2]; //Additive noise
+        Scalar mulNoiseFactor_[2]; //Noise dependent on distance
+    };
+}

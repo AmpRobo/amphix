@@ -1,0 +1,86 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  PerformanceMonitor.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 02/09/2022.
+//  Copyright (c) 2022-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include <SDL2/SDL_mutex.h>
+#include <chrono>
+#include <deque>
+#include <vector>
+
+namespace amphix
+{
+    class PerformanceMonitor
+    {
+    public:
+        PerformanceMonitor(size_t averageMaxCount);
+        ~PerformanceMonitor();
+        
+        void SimulationStarted();
+        void SimulationFinished();
+        void PhysicsStarted();
+        void PhysicsFinished();
+        void HydrodynamicsStarted();
+        void HydrodynamicsFinished();
+
+        // In seconds.
+        double GetSimulationTime();
+        
+        // In microseconds.
+        double GetPhysicsTime();
+        double GetPhysicsTimeAverage();
+        template<typename T> std::vector<T> GetPhysicsTimeHistory(size_t len) { return GetHistory<T>(phyTime_, len); };
+
+        double GetHydrodynamicsTime();
+        double GetHydrodynamicsTimeAverage();
+        template<typename T> std::vector<T> GetHydrodynamicsTimeHistory(size_t len) { return GetHistory<T>(hydroTime_, len); };
+
+    private:
+        void Update(const std::chrono::high_resolution_clock::time_point& start, std::deque<double>& times, double& average);
+        template<typename T> std::vector<T> GetHistory(std::deque<double>& data, size_t len)
+        { 
+            std::vector<T> dataOut; 
+            dataOut.resize(data.size() < len ? data.size() : len);
+            SDL_LockMutex(updateMtx_);
+            size_t offset = data.size() - dataOut.size();
+            for(size_t i=data.size()-dataOut.size(); i<data.size(); ++i) 
+                dataOut[i-offset] = (T)(data[i]);
+            SDL_UnlockMutex(updateMtx_);   
+            return dataOut;
+        };
+
+        size_t maxCount_;
+        std::chrono::high_resolution_clock::time_point simStart_;
+        std::chrono::high_resolution_clock::time_point phyStart_;
+        std::chrono::high_resolution_clock::time_point hydroStart_;
+        double simTime_;
+        bool simFinished_;
+        std::deque<double> phyTime_;
+        std::deque<double> hydroTime_;
+        double phyTimeAvg_;
+        double hydroTimeAvg_;
+        SDL_mutex* updateMtx_;
+    };
+}

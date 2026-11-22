@@ -1,0 +1,87 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Push.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 04/07/2023.
+//  Copyright (c) 2023-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "actuators/LinkActuator.h"
+
+namespace amphix
+{
+    //! A class representing a thruster.
+    class Push : public LinkActuator
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the push
+         \param inverted a flag indicating if the direction of the generated force should be reversed
+        */
+        Push(std::string_view uniqueName, bool inverted = false);
+        
+        //! A method used to update the internal state of the push actuator.
+        /*!
+         \param dt a time step of the simulation [s]
+         */
+        void Update(Scalar dt) override;
+        
+        //! A method implementing the rendering of the push actuator.
+        std::vector<Renderable> Render() override;
+        
+        //! A method used to set the force limits.
+        /*!
+         \param positive positive force limit [N]
+         \param negative negative force limit (absolute) [N]
+        */
+        void SetForceLimits(Scalar positive, Scalar negative);
+
+        //! A method setting the new value of the desired force.
+        /*!
+         \param f the desired force to be generated
+         */
+        void SetForce(Scalar f);
+        
+        //! A method returning the current setpoint.
+        Scalar GetForce() const;
+
+        //! A method returning type of link actuator.
+        LinkActuatorType GetLinkActuatorType() const override;
+
+        //! A method returning the construction info for the actuator.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the actuator based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<Push> Construct(std::string_view uniqueName, ConstructInfo& info);
+        
+    private:
+        void WatchdogTimeout() override;
+
+        Scalar setpoint_;
+        bool inv_;
+        std::pair<Scalar, Scalar> limits_;
+    };
+}

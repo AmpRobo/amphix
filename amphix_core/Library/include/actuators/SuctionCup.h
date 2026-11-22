@@ -1,0 +1,93 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  SuctionCup.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 13/02/2023.
+//  Copyright (c) 2023-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "actuators/LinkActuator.h"
+
+namespace amphix
+{
+    class SimulationManager;
+    class FeatherstoneEntity;
+    class Joint;
+
+    //! A class representing a thruster.
+    class SuctionCup : public LinkActuator
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the suction cup actuator
+        */
+        SuctionCup(std::string_view uniqueName);
+
+        //! A method used to attach the actuator to a specified rigid body.
+        /*!
+         \param solid a pointer to a rigid body
+         \param origin a transformation from the body origin to the actuator origin
+         */
+        void AttachToSolid(SolidEntity* body, const Transform& origin);
+
+        //! A method used to attach the actuator to the specified joint of a rigid multibody.
+        /*!
+         \param multibody a pointer to the multibody
+         \param linkId the index of the multibody link
+         */
+        void AttachToLink(FeatherstoneEntity* multibody, unsigned int linkId);
+        
+        //! A method used to update the internal state of the thruster.
+        /*!
+         \param dt a time step of the simulation [s]
+         */
+        void Update(Scalar dt) override;
+
+        //! A method used to engage the suction cup.
+        void Engage(SimulationManager* sm);
+        
+        //! A method used to set the state of the vacuum pump.
+        void SetPump(bool enabled);
+
+        //! A method returning the state of the vacuum pump.
+        bool GetPump() const;
+
+        //! A method returning type of link actuator.
+        LinkActuatorType GetLinkActuatorType() const override;
+
+        //! A method returning the construction info for the actuator.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the actuator based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<SuctionCup> Construct(std::string_view uniqueName, ConstructInfo& info);
+        
+    private:
+        bool pump_;
+        Joint* joint_;
+        FeatherstoneEntity* attachFE_;
+        unsigned int attachLinkId_;
+    };
+}

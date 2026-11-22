@@ -1,0 +1,66 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  TorusShape.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 5/15/14.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "BulletCollision/CollisionShapes/btConvexInternalShape.h"
+#include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"
+#include "AmphixCommon.h"
+
+namespace amphix
+{
+    //! A class implementing a toroidal collision shape.
+    ATTRIBUTE_ALIGNED16(class) TorusShape : public btConvexInternalShape
+    {
+    public:
+        BT_DECLARE_ALIGNED_ALLOCATOR();
+        
+        TorusShape(Scalar majorRadius, Scalar minorRadius);
+        
+        virtual Vector3 localGetSupportingVertex(const Vector3& vec)const;
+        virtual Vector3 localGetSupportingVertexWithoutMargin(const Vector3& vec)const;
+        virtual void batchedUnitVectorGetSupportingVertexWithoutMargin(const Vector3* vectors,Vector3* supportVerticesOut,int numVectors) const;
+        
+        virtual void calculateLocalInertia(Scalar mass,Vector3& inertia) const;
+        
+        virtual void getAabb(const Transform& t,Vector3& aabbMin,Vector3& aabbMax) const;
+        
+        Scalar GetMajorRadius() const { return majorRadius_; }
+        Scalar GetMinorRadius() const { return minorRadius_; }
+        Scalar GetRadius() const { return GetMajorRadius(); }
+        
+        Vector3 GetHalfExtentsWithMargin() const;
+        const Vector3& GetHalfExtentsWithoutMargin() const;
+        virtual void setLocalScaling(const Vector3& scaling);
+        
+        virtual const char*	getName()const { return "TORUS"; }
+        
+        virtual Vector3 getAnisotropicRollingFrictionDirection() const { return Vector3(0,1,0); }
+        
+    protected:
+        Scalar majorRadius_;
+        Scalar minorRadius_;
+    };
+}

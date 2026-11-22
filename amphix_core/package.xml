@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>amphix_core</name>
+  <version>1.6.0</version>
+  <description>Amphix marine and terrestrial robotics simulation library.</description>
+  <author email="patryk.cieslak@udg.edu">Patryk Cieslak</author>
+  <maintainer email="patryk.cieslak@udg.edu">Patryk Cieslak</maintainer>
+  <license>GPL-3.0</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <depend>opengl</depend>
+  <depend>sdl2</depend>
+  <depend>libfreetype-dev</depend>
+  <depend>libglm-dev</depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

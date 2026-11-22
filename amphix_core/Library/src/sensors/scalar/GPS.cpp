@@ -1,0 +1,138 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  GPS.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 02/11/2017.
+//  Copyright (c) 2017-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "sensors/scalar/GPS.h"
+
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
+#include "core/NED.h"
+#include "core/DeviceFactory.h"
+#include "entities/forcefields/Ocean.h"
+#include "sensors/Sample.h"
+
+namespace amphix
+{
+
+GPS::GPS(std::string_view uniqueName, Scalar frequency, int historyLength) : LinkSensor(uniqueName, frequency, historyLength)
+{
+    channels_.push_back(SensorChannel("Latitude", QuantityType::ANGLE));
+    channels_.push_back(SensorChannel("Longitude", QuantityType::ANGLE));
+    channels_.push_back(SensorChannel("North", QuantityType::LENGTH));
+    channels_.push_back(SensorChannel("East", QuantityType::LENGTH));
+    SetNoise(Scalar(0));
+}
+
+void GPS::InternalUpdate(Scalar dt)
+{
+    //get sensor frame in world
+    Transform gpsTrans = GetSensorFrame();
+    
+    //GPS not updating underwater
+    Ocean* liq = SimulationApp::GetApp()->GetSimulationManager()->GetOcean();
+    if(liq != nullptr && liq->IsInsideFluid(gpsTrans.getOrigin()))
+    {
+        AddSampleToHistory(std::make_unique<Sample>(std::vector<Scalar>({BT_LARGE_FLOAT, BT_LARGE_FLOAT, Scalar(0), Scalar(0)})));
+    }
+    else
+    {
+        Vector3 gpsPos = gpsTrans.getOrigin();
+		
+        //add noise
+        if(!btFuzzyZero(nedStdDev_))
+        {
+            gpsPos.setX(gpsPos.x() + noise_(randomGenerator));
+            gpsPos.setY(gpsPos.y() + noise_(randomGenerator));
+        }
+        
+        //convert NED to geodetic coordinates
+        double latitude;
+        double longitude;
+        double height;
+        SimulationApp::GetApp()->GetSimulationManager()->GetNed()->Ned2Geodetic(gpsPos.x(), gpsPos.y(), 0.0, latitude, longitude, height);
+        
+        //record sample
+        AddSampleToHistory(std::make_unique<Sample>(std::vector<Scalar>({latitude, longitude, gpsPos.x(), gpsPos.y()})));
+    }
+}
+
+void GPS::SetNoise(Scalar nedDev)
+{
+    nedStdDev_ = btClamped(nedDev, Scalar(0), Scalar(BT_LARGE_FLOAT));
+    noise_ = std::normal_distribution<Scalar>(Scalar(0), nedStdDev_);
+}
+
+Scalar GPS::GetNoise() const
+{
+    return nedStdDev_;
+}
+
+ScalarSensorType GPS::GetScalarSensorType() const
+{
+    return ScalarSensorType::GPS;
+}
+
+// Statics
+
+ConstructInfo GPS::GetConstructInfo()
+{
+    ConstructInfo info;
+    ConstructInfoNode node;
+    
+    // History
+    node.optional = true;
+    node.attributes.insert({"samples", {ConstructInfoValueType::INT, false}});
+    info.nodes.insert({"history", node});
+
+    // Noise
+    node.attributes.clear(); // Clear temporary
+    node.optional = true;
+    node.attributes.insert({"ned_position", {ConstructInfoValueType::SCALAR, false}});
+    info.nodes.insert({"noise", node});
+    
+    return info;
+}
+
+std::unique_ptr<GPS> GPS::Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info)
+{
+    // History (optional)
+    int history = -1;
+    ConstructInfoValue& value = info.nodes.at("history").attributes.at("samples");
+    if (value.valid)
+        history = std::get<int>(value.value);
+    
+    // Create sensor
+    std::unique_ptr<GPS> sensor = std::make_unique<GPS>(uniqueName, frequency, history);    
+
+    // Noise (optional)
+    value = info.nodes.at("noise").attributes.at("ned_position");
+    if (value.valid)
+        sensor->SetNoise(std::get<Scalar>(value.value));
+
+    return sensor;
+}
+
+REGISTER_SENSOR("gps", GPS)
+
+}

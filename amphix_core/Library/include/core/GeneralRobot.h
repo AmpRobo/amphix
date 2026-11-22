@@ -1,0 +1,91 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  GeneralRobot.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 27/01/2023.
+//  Copyright(c) 2023-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "core/Robot.h"
+
+namespace amphix
+{
+    class Joint;
+
+    //! A class implementing a robotic system composed of a dynamic rigid-body chain/tree/loop, actuators and sensors.
+    class GeneralRobot : public Robot
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the robot
+         \param fixedBase is the robot fixed to the world?
+         */
+        GeneralRobot(std::string_view uniqueName, bool fixedBase = false);
+
+        //! A method used to define a list of rigid bodies constituting the mechanical part of the robot (dynamic tree).
+        /*!
+         \param baseLink a solid contituting the base of the robot
+         \param otherLinks a vector of subsequent links
+         \param selfCollision a flag determining if self collision between multibody links should be enabled (subsequent links never collide)
+         */
+        void DefineLinks(std::unique_ptr<SolidEntity> baseLink, std::vector<std::unique_ptr<SolidEntity>> otherLinks = std::vector<std::unique_ptr<SolidEntity>>(0), bool selfCollision = false);
+        
+        //! A method which uses links and joints definitions to build the kinematic structure of the robot.
+        void BuildKinematicStructure();
+        
+        //! A method used to attach a sensor to a specified joint of the robot.
+        /*!
+         \param s a pointer to a joint sensor object
+         \param monitoredJointName a name of the joint at which the sensor is attached
+         */
+        JointSensor* AddJointSensor(std::unique_ptr<Sensor> s, std::string_view monitoredJointName) override;
+        JointSensor* AddJointSensor(std::unique_ptr<Sensor, SensorDeleter> s, std::string_view monitoredJointName) override;
+
+        //! A method used to attach an actuator to a specified joint of the robot.
+        /*!
+         \param a a pointer to a joint actuator object
+         \param actuatedJointName a name of the joint which is to be driven
+         */
+        JointActuator* AddJointActuator(std::unique_ptr<Actuator> a, std::string_view actuatedJointName) override;
+        JointActuator* AddJointActuator(std::unique_ptr<Actuator, ActuatorDeleter> a, std::string_view actuatedJointName) override;
+
+        //! A method adding the robot to the simulation world (includes consistency checking).
+        /*!
+         \param sm a pointer to a simulation manager
+         \param origin a trasformation from the world origin to the robot origin
+         */
+        void AddToSimulation(SimulationManager* sm, const Transform& origin);
+
+        //! A method returning the pose of the robot in the world frame.
+        Transform GetTransform() const;
+
+        //! A method returning type of algorithm used for the robot.
+        RobotType GetType() const;
+        
+    private:
+        Joint* GetJoint(std::string_view name);
+        std::vector<Joint*> joints_;
+        std::vector<std::pair<JointSensor*, std::string>> jsAttachments_;
+        std::vector<std::pair<JointActuator*, std::string>> jaAttachments_;
+    };
+}

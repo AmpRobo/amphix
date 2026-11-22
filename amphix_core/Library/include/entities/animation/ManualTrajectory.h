@@ -1,0 +1,63 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  ManualTrajectory.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 23/11/20.
+//  Copyright(c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "entities/animation/Trajectory.h"
+
+namespace amphix
+{
+    //! A class representing a dummy trajectory for setting the transforms and velocities manually.
+    class ManualTrajectory : public Trajectory
+    {
+    public:
+        //! A constructor.
+        ManualTrajectory();
+
+        //! A method setting the current transform.
+        /*!
+         \param T current transform
+         */
+        void SetTransform(const Transform& T);
+
+        //! A method setting the current linear velocity.
+        /*!
+         \param v velocity [m/s]
+         */
+        void SetLinearVelocity(const Vector3& v);
+
+        //! A method setting the current angular velocity.
+        /*!
+         \param omega angular velocity [rad/s]
+         */
+        void SetAngularVelocity(const Vector3& omega);
+
+        //! A method updating the interpolated transform and velocities.
+        virtual void Interpolate() override;
+
+        //! A method returning the elements that should be rendered.
+        std::vector<Renderable> Render() override;
+    };
+}

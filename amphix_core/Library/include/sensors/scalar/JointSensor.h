@@ -1,0 +1,85 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  JointSensor.h
+//  Amphix
+//
+//  Created by Patryk Cieślak on 20/11/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "sensors/ScalarSensor.h"
+
+namespace amphix
+{
+    class FeatherstoneEntity;
+    class Joint;
+    
+    //! An abstract class representing a sensor attached to a joint.
+    class JointSensor : public ScalarSensor
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param frequency the sampling frequency of the sensor [Hz] (0 if updated every simulation step)
+         \param historyLength defines: -1 -> no history, 0 -> unlimited history, >0 -> history with a specified length
+         */
+        JointSensor(std::string_view uniqueName, Scalar frequency, int historyLength);
+
+        //! A destructor.
+        virtual ~JointSensor() = default;
+                
+        //! A method used to attach the sensor to a multibody joint.
+        /*!
+         \param multibody a pointer to a multibody
+         \param jointId an index of the multibody joint
+         */
+        virtual void AttachToJoint(FeatherstoneEntity* multibody, size_t jointId);
+        
+        //! A method used to attach the sensor to a discrete joint.
+        /*!
+         \param joint a pointer to a discrete joint
+         */
+        virtual void AttachToJoint(Joint* joint);
+        
+        //! A method returning the type of the sensor.
+        SensorType GetType() const;
+        
+        //! A method returning the current sensor frame in world.
+        Transform GetSensorFrame() const;
+
+        //! A method returning the velocity of the sensor measurement frame.
+        /*!
+         \param linear output of the linear velocity of the sensor measurement frame [m/s]
+         \param angular output of the angular velocity of the sensor measurement frame [rad/s]
+         */
+        void GetSensorVelocity(Vector3& linear, Vector3& angular) const override;
+        
+        //! A method returning the name of the joint that the sensor is attached to.
+        std::string GetJointName() const;
+        
+    protected:
+        FeatherstoneEntity* fe_;
+        unsigned int jId_;
+        Joint* j_;
+    };
+}
+

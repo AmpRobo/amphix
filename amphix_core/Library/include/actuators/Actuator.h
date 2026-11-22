@@ -1,0 +1,99 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Actuator.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 1/8/13.
+//  Copyright (c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "AmphixCommon.h"
+#include "entities/Entity.h"
+#include "core/ConstructInfo.h"
+
+namespace amphix
+{
+    struct Renderable;
+    
+    //! An enum defining types of sensors.
+    enum class ActuatorType {JOINT, LINK};
+
+    //! An abstract class representing any actuator.
+    class Actuator
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name of the actuator
+         */
+        Actuator(std::string_view uniqueName);
+        
+        //! A destructor.
+        virtual ~Actuator();
+        
+        //! A method used to update the internal state of the actuator.
+        /*!
+         \param dt a time step of the simulation [s]
+         */
+        virtual void Update(Scalar dt);
+        
+        //! A method implementing the rendering of the actuator.
+        virtual std::vector<Renderable> Render();
+        
+        //! A method used to set display mode used for the actuator.
+        /*!
+         \param m flag defining the display mode
+         */
+        void SetDisplayMode(DisplayMode m);
+
+        //! A method used to set the watchdog timeout.
+        /*!
+         \param timeout timeout of the watchdog [s]
+        */
+        void SetWatchdog(Scalar timeout);
+
+        //! A method returning the name of the actuator.
+        const std::string& GetName() const;
+
+        //! A method returning the type of the actuator.
+        virtual ActuatorType GetType() const = 0;
+
+        //! A deleter method required for the plugin architecture.
+        static void DefaultDeleter(Actuator* a);
+    
+    protected:
+        virtual void WatchdogTimeout();
+        void ResetWatchdog();
+
+        DisplayMode dm_;
+
+    private:
+        std::string name_;
+        Scalar watchdog_;
+        Scalar watchdogTimeout_;
+    };
+
+    // Plugin architecture types
+    using ActuatorDeleter = void(*)(Actuator*);
+    typedef Actuator* (*CreateActuatorFunc)(const char*, ConstructInfo*);
+    typedef void (*DestroyActuatorFunc)(Actuator*);
+    typedef ConstructInfo (*GetActuatorConstructInfoFunc)();
+}

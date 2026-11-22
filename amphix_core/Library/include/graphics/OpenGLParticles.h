@@ -1,0 +1,52 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  OpenGLParticles.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 04/08/19.
+//  Copyright (c) 2019-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "graphics/OpenGLDataStructs.h"
+
+namespace amphix
+{
+	//! An abstract class implementing a general particle system
+	class OpenGLParticles
+	{
+	public:
+        //! A constructor.
+        /*!
+         \param numOfParticles the number of simulated particles
+         */
+        OpenGLParticles(GLuint numOfParticles);
+		
+        //! A destructor.
+        virtual ~OpenGLParticles();	
+		
+	protected:
+		GLuint nParticles_;
+        GLuint particlePosSSBO_; //Includes position and size
+        GLuint particleVelSSBO_; //Includes velocity and opacity
+        GLuint particleVAO_; //Vertex array
+        GLuint particleEAB_; //Indices of particle triangles
+	};
+}

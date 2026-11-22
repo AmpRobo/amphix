@@ -1,0 +1,78 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  OpenGLConsole.h
+//  Amphix
+//
+//  Created by Patryk Cieślak on 02/12/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "core/Console.h"
+#include "graphics/OpenGLDataStructs.h"
+
+namespace amphix
+{
+    class GLSLShader;
+    class OpenGLPrinter;
+    
+    //! A class implementing a graphical console.
+    class OpenGLConsole : public Console
+    {
+    public:
+        //! A constructor.
+        OpenGLConsole();
+        
+        //! A destructor.
+        ~OpenGLConsole();
+        
+        //! A method that allocates buffers and textures
+        /*!
+         \param windowW width of the window in pixels
+         \param windowH height of the window in pixels
+         */
+        void Init(int windowW, int windowH);
+        
+        //! A method which renders the console.
+        /*!
+         \param overlay defines if the console should be overlayed on the scene rendering
+         */
+        void Render(bool overlay);
+        
+        //! A method that scrolls the console.
+        /*!
+         \param amount number of lines to scroll
+         */
+        void Scroll(float amount);
+        
+        //! A method that resets the position of the console.
+        void ResetScroll();
+        
+    private:
+        int windowW_, windowH_;
+        float scrollOffset_;
+        float scrollVelocity_;
+        int64_t lastTime_;
+        std::unique_ptr<OpenGLPrinter> printer_;
+        GLuint logoTexture_;
+        GLuint consoleVAO_;
+        std::unique_ptr<GLSLShader> texQuadShader_;
+    };
+}

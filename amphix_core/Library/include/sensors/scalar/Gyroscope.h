@@ -1,0 +1,78 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Gyroscope.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 29/03/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "sensors/scalar/LinkSensor.h"
+
+namespace amphix
+{   
+    //! A class representing a 3-axis gyroscope.
+    class Gyroscope : public LinkSensor
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param frequency the sampling frequency of the sensor [Hz] (-1 if updated every simulation step)
+         \param historyLength defines: -1 -> no history, 0 -> unlimited history, >0 -> history with a specified length
+         */
+        Gyroscope(std::string_view uniqueName, Scalar frequency = Scalar(-1), int historyLength = -1);
+        
+        //! A method performing internal sensor state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        //! A method used to set the range of the sensor.
+        /*!
+         \param angularVelocityMax the maximum measured angular velocity for each axis [rad/s]
+         */
+        void SetRange(Vector3 angularVelocityMax);
+        
+        //! A method used to set the noise characteristics of the sensor.
+        /*!
+         \param angularVelocityStdDev standard deviation of the angular velocity measurement noise
+         \param angularVelocityBias bias of the angular velocity measurement fo each axis [rad/s]
+         */
+        void SetNoise(Vector3 angularVelocityStdDev, Vector3 angularVelocityBias);
+
+        //! A method returning the type of the scalar sensor.
+        ScalarSensorType GetScalarSensorType() const override;
+
+        //! A method returning the construction info for the sensor.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the sensor based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<Gyroscope> Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info);
+        
+    private:
+        Vector3 bias_;
+    };
+}

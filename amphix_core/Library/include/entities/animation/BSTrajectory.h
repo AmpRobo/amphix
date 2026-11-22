@@ -1,0 +1,61 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  BSTrajectory.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 08/11/23.
+//  Copyright(c) 2023-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "entities/animation/PWLTrajectory.h"
+#include "tinysplinecxx.h"
+
+namespace amphix
+{
+    //! A class representing a B-spline trajectory.
+    class BSTrajectory : public PWLTrajectory
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param playback an enum representing the desired playback mode
+         */
+        BSTrajectory(PlaybackMode playback);
+
+        //! A method adding a new key point.
+        /*!
+         \param keyTime the time at point
+         \param keyTransform the transform at point
+         */
+        void AddKeyPoint(Scalar keyTime, Transform keyTransform);
+
+        //! A method updating the interpolated transform and velocities.
+        void Interpolate() override;
+
+        //! A method that builds a graphical representation of the trajectory.
+        void BuildGraphicalPath() override;
+
+    private:
+        tinyspline::BSpline spline_;
+        tinyspline::BSpline deriv_;
+        double lastPlayTime_;
+    };
+}

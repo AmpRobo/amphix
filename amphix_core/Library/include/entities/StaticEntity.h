@@ -1,0 +1,125 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  StaticEntity.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 24/05/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "core/MaterialManager.h"
+#include "entities/Entity.h"
+
+namespace amphix
+{
+    //! An enum specifiying the type of the static entity.
+    enum class StaticEntityType {PLANE, TERRAIN, OBSTACLE};
+    
+    struct Mesh;
+    
+    //! An abstract class defining a static simulation entity.
+    class StaticEntity : public Entity
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the entity
+         \param material the name of the material the entity is made of
+         \param look the name of the graphical material used for rendering
+         */
+        StaticEntity(std::string_view uniqueName, std::string_view material, std::string_view look);
+        
+        //! A destructor.
+        virtual ~StaticEntity() = default;
+        
+        //! A method implementing the rendering of the entity.
+        virtual std::vector<Renderable> Render();
+        
+        //! A method used to add the static entity to the simulation.
+        /*!
+         \param sm a pointer to the simulation manager
+         */
+        void AddToSimulation(SimulationManager* sm);
+        
+        //! A method used to add the static entity to the simulation.
+        /*!
+         \param sm a pointer to the simulation manager
+         \param origin a transformation of the entity origin in the world frame
+         */
+        virtual void AddToSimulation(SimulationManager* sm, const Transform& origin);
+        
+        //! A method returning the extents of the entity axis alligned bounding box.
+        /*!
+         \param min a point located at the minimum coordinate corner
+         \param max a point located at the maximum coordinate corner
+         */
+        virtual void GetAabb(Vector3& min, Vector3& max);
+        
+        //! A method used to set new origin of the entity in the world frame.
+        /*!
+         \param trans a transformation of the entity origin in the world frame
+         */
+        void SetTransform(const Transform& trans);
+        
+        //! A method returning the transformation of the entity origin in the world frame.
+        Transform GetTransform();
+        
+        //! A method returning the material of the entity.
+        Material GetMaterial() const;
+        
+        //! A method returning the rigid body associated with the entity.
+        btRigidBody* GetRigidBody();
+        
+        //! A method returning the type of the entity.
+        EntityType GetType() const;
+        
+        //! A method returninf the type of the static entity.
+        virtual StaticEntityType GetStaticType() = 0;
+        
+        //! A method used to set display mode used for the body.
+        /*!
+         \param m flag defining the display mode
+         */
+        void SetDisplayMode(DisplayMode m);
+        
+        //! A static method used to transform a group of static entities together (useful to change the position of multiple linked objects).
+        /*!
+         \param objects a vector holiding a list of pointers to the objects that are to be transformed
+         \param centre the center of the transformation in the world frame
+         \param transform the transformation to be applied to the group in the world frame
+         */
+        static void GroupTransform(std::vector<StaticEntity*>& objects, const Transform& centre, const Transform& transform);
+        
+    protected:
+        void BuildRigidBody();
+        virtual void BuildGraphicalObject();
+        
+        std::unique_ptr<btRigidBody> rigidBody_;
+        std::unique_ptr<btCollisionShape> collisionShape_;
+        std::unique_ptr<btDefaultMotionState> motionState_;
+        Material mat_;
+        std::shared_ptr<Mesh> phyMesh_;
+        
+        int lookId_;
+        int phyObjectId_;
+        DisplayMode dm_;
+    };
+}

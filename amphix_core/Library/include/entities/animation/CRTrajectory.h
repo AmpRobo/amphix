@@ -1,0 +1,54 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  CRTrajectory.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 22/10/20.
+//  Copyright(c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "entities/animation/PWLTrajectory.h"
+
+namespace amphix
+{
+    //! A class representing a Catmull-Rom trajectory.
+    class CRTrajectory : public PWLTrajectory
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param playback an enum representing the desired playback mode
+         */
+        CRTrajectory(PlaybackMode playback);
+
+        //! A method updating the interpolated transform and velocities.
+        void Interpolate() override;
+
+        //! A method that builds a graphical representation of the trajectory.
+        void BuildGraphicalPath() override;
+
+    private:
+        Vector3 CatmullRom(Vector3 P0, Vector3 P1, Vector3 P2, Vector3 P3, 
+                           Scalar t0, Scalar t1, Scalar t2, Scalar t3, Scalar t);
+        Vector3 CatmullRomDerivative(Vector3 P0, Vector3 P1, Vector3 P2, Vector3 P3, 
+                                     Scalar t0, Scalar t1, Scalar t2, Scalar t3, Scalar t);
+    };
+}

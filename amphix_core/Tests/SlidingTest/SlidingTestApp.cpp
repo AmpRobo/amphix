@@ -1,0 +1,50 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  SlidingTestApp.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 03/03/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "SlidingTestApp.h"
+#include <graphics/IMGUI.h>
+#include <sensors/ScalarSensor.h>
+#include <sensors/Contact.h>
+
+SlidingTestApp::SlidingTestApp(std::string_view dataDirPath, amphix::RenderSettings s, amphix::HelperSettings h, std::unique_ptr<SlidingTestManager> sim) 
+    : GraphicalSimulationApp("Sliding Test", dataDirPath, s, h, std::move(sim))
+{
+}
+
+void SlidingTestApp::DoHUD()
+{
+    GraphicalSimulationApp::DoHUD();
+    
+    amphix::Uid plot;
+    plot.owner = 1;
+    plot.item = 0;
+  
+    std::vector<unsigned short> dims;
+    dims.push_back(3);
+    dims.push_back(4);
+    dims.push_back(5);
+    GetGui()->DoTimePlot(plot, GetWindowWidth()-310, GetWindowHeight() - 240, 300, 200, 
+        static_cast<amphix::ScalarSensor*>(GetSimulationManager()->GetSensor("Odometry")), dims, "Velocity");
+}

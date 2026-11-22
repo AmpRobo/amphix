@@ -1,0 +1,94 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  OpticalModem.h
+//  Amphix
+//
+//  Created by Patryk Cieślak on 14/05/2025.
+//  Copyright (c) 2025-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include <map>
+#include "comms/Comm.h"
+
+namespace amphix
+{
+    //! An abstract class representing a visual light communication modem.
+    class OpticalModem : public Comm
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the comm device
+         \param deviceId an identification code of the device
+         \param fovDeg field of view of the diodes (conical) [deg]
+         \param operatingRange the maximum ideal operating range [m]
+         \param ambientLightSensitivity an empirical unitless factor [0.0, 1.0] specifying how ambient light impacts the device operation
+         */
+        OpticalModem(std::string_view uniqueName, uint64_t deviceId, Scalar fovDeg, Scalar operatingRange, Scalar ambientLightSensitivity);
+        
+        //! A destructor.
+        virtual ~OpticalModem();
+
+        //! A method implementing the rendering of the comm device.
+        std::vector<Renderable> Render();
+        
+        //! A method returnign the reception quality.
+        Scalar GetReceptionQuality() const;
+
+        //! A method returning the type of the comm.
+        virtual CommType GetType() const;
+
+        //! A method returning the construction info for the sensor.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the sensor based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<OpticalModem> Construct(std::string_view uniqueName, uint64_t deviceId, ConstructInfo& info);
+        
+    protected:
+        //! A method performing internal comm state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        virtual void InternalUpdate(Scalar dt) override;
+
+        virtual void MessageReceived(std::shared_ptr<CommDataFrame> message);
+        bool IsReceptionPossible(Vector3 worldDir, Scalar distance);
+        
+        static OpticalModem* GetNode(uint64_t deviceId);
+        static std::vector<uint8_t> IntroduceErrors(const std::vector<uint8_t>& data, Scalar linkQuality);
+        
+    private:
+        Scalar maxRange_;
+        Scalar fov_;
+        Scalar ambientLightSens_;
+        Scalar receptionQuality_;
+        Scalar trueRange_;
+        
+        static void AddNode(OpticalModem* node);
+        static void RemoveNode(uint64_t deviceId);
+        static std::vector<uint64_t> GetNodeIds();
+
+        static std::map<uint64_t, OpticalModem*> nodes;
+    };
+}

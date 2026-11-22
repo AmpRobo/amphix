@@ -1,0 +1,81 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Sample.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 23/03/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "sensors/Sample.h"
+
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
+
+namespace amphix
+{
+
+Sample::Sample(const std::vector<Scalar>& data, bool invalid, size_t index)
+    : data_{data}, id_{index}
+{
+    if(invalid)
+        timestamp_ = Scalar(-1);
+    else
+        timestamp_ = SimulationApp::GetApp()->GetSimulationManager()->GetSimulationTime(true);
+}
+
+Scalar Sample::GetTimestamp() const
+{
+    return timestamp_;
+}
+    
+size_t Sample::GetNumOfDimensions() const
+{
+    return data_.size();
+}
+    
+Scalar* Sample::GetDataPointer()
+{
+    return data_.data();
+}
+
+Scalar Sample::GetValue(size_t dimension) const
+{
+    if(dimension < data_.size())
+        return data_[dimension];
+    else
+        return Scalar(0);
+}
+
+std::vector<Scalar> Sample::GetData() const
+{
+    return data_;
+}
+
+size_t Sample::GetId() const
+{
+    return id_;
+}
+
+void Sample::SetId(size_t id)
+{
+    id_ = id;
+}
+
+}

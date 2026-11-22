@@ -1,0 +1,401 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  FeatherstoneEntity.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 8/20/13.
+//  Copyright(c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "BulletDynamics/Featherstone/btMultiBody.h"
+#include "BulletDynamics/Featherstone/btMultiBodyLinkCollider.h"
+#include "BulletDynamics/Featherstone/btMultiBodyLink.h"
+#include "BulletDynamics/Featherstone/btMultiBodyJointLimitConstraint.h"
+#include "BulletDynamics/Featherstone/btMultiBodyJointFeedback.h"
+#include "BulletDynamics/Featherstone/btMultiBodyJointMotor.h"
+#include "entities/SolidEntity.h"
+
+namespace amphix
+{
+    class StaticEntity;
+    
+    //! A structure holding data of a single multibody link.
+    struct FeatherstoneLink
+    {
+        //! A constructor.
+        /*!
+         \param s a pointer to a solid entity
+         \param t the transformation of the solid entity
+         */
+        FeatherstoneLink(std::unique_ptr<SolidEntity> s, const Transform& t) : solid(std::move(s)), trans(t) {}
+        
+        std::unique_ptr<SolidEntity> solid;
+        Transform trans;
+    };
+    
+    //! A structure holding data of a single multibody joint.
+    struct FeatherstoneJoint
+    {
+        //! A constructor.
+        /*!
+         \param n the name of the joint
+         \param t the type of the joint
+         \param p the id of the parent link
+         \param c the id of the child link
+         */
+        FeatherstoneJoint(std::string_view n, btMultibodyLink::eFeatherstoneJointType t, size_t p, size_t c)
+        : name(n), type(t), parent(p), child(c), sigDamping(0), velDamping(0), lowerLimit(10e9), upperLimit(-10e9) {}
+        
+        std::string name;
+        btMultibodyLink::eFeatherstoneJointType type;
+        std::unique_ptr<btMultiBodyJointFeedback> feedback;
+        std::unique_ptr<btMultiBodyJointLimitConstraint> limit;
+        std::unique_ptr<btMultiBodyJointMotor> motor;
+        
+        size_t parent;
+        size_t child;
+        Vector3 axisInChild;
+        Vector3 pivotInChild;
+        Scalar sigDamping;
+        Scalar velDamping;
+		Scalar lowerLimit;
+		Scalar upperLimit;
+    };
+    
+    //! A class that implements simplified creation of multi-body trees, using Roy Featherstone's algorithm.
+    class FeatherstoneEntity : public Entity
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the multibody
+         \param totalNumOfLinks a number of links of the multibody
+         \param baseSolid a pointer to the rigid body constituting the base of the multibody
+         \param fixedBase a flag to designate if the multibody is fixed to the world or mobile
+         */
+        FeatherstoneEntity(std::string_view uniqueName, size_t totalNumOfLinks, std::unique_ptr<SolidEntity> baseSolid, bool fixedBase = false);
+
+        //! A method to define a new multibody link.
+        /*!
+         \param solid a pointer to a rigid body
+         \param transform a position of the rigid body in the world frame
+         */
+        void AddLink(std::unique_ptr<SolidEntity> solid, const Transform& transform);
+        
+        //! A method to define a new revolute joint.
+        /*!
+         \param name a name for the joint
+         \param parent an id of the parent link
+         \param child an id of the child link
+         \param pivot the position of the joint pivot point
+         \param axis the axis of the joint
+         \param collide a flag to decide if the links connected by the joint should collide
+         \return id of the joint
+         */
+        int AddRevoluteJoint(std::string_view name, size_t parent, size_t child, const Vector3& pivot, const Vector3& axis, bool collide = false);
+        
+        //! A method to define a new prismatic joint.
+        /*!
+         \param name a name for the joint
+         \param parent an id of the parent link
+         \param child an id of the child link
+         \param axis the axis of the joint
+         \param collide a flag to decide if the links conneted by the joint should collide
+         \return id of the joint
+         */
+        int AddPrismaticJoint(std::string_view name, size_t parent, size_t child, const Vector3& axis, bool collide = false);
+        
+        //! A method to define a new fixed joint.
+        /*!
+         \param name a name for the joint
+         \param parent an id of the parent link
+         \param child an id of the child link
+         \param pivot the position of the joint pivot point
+         \return id of the joint
+         */
+        int AddFixedJoint(std::string_view name, size_t parent, size_t child, const Vector3& pivot);
+        
+        //! A Method to add a joint motor.
+        /*!
+         \param index the id of the joint
+         \param maxForceTorque the maximum value of the force [N] or torque [Nm] generated by the motor
+         */
+        void AddJointMotor(size_t index, Scalar maxForceTorque);
+        
+        //! A method to add limits to the joint.
+        /*!
+         \param index the id of the joint
+         \param lower the lower limit of the joint ([m] or [rad])
+         \param upper the upper limit of the joint ([m] or [rad])
+         */
+        void AddJointLimit(size_t index, Scalar lower, Scalar upper);
+        
+        //! A method to change the setpoint of the joint motor.
+        /*!
+         \param index the id of the joint
+         \param pos the setpoint of position of the joint ([m] or [rad])
+         \param kp the position control gain
+         */
+        void MotorPositionSetpoint(size_t index, Scalar pos, Scalar kp);
+        
+        //! A method to change the setpoint of the joint motor.
+        /*!
+         \param index the id of the joint
+         \param vel the setpoint of velocity of the joint ([m/s] or [rad/s])
+         \param kd the velocity control gain
+         */
+        void MotorVelocitySetpoint(size_t index, Scalar vel, Scalar kd);
+        
+        //! A method used to apply direct force or torque to the joint.
+        /*!
+         \param index the id of the joint
+         \param forceTorque the value of the applied force [N] or torque [Nm]
+         */
+        void DriveJoint(size_t index, Scalar forceTorque);
+        
+        //! A method to apply gravity to the multibody.
+        /*!
+         \param g the gravity acceleration vector
+         */
+        void ApplyGravity(const Vector3& g);
+        
+        //! A method to apply damping to the multibody.
+        void ApplyDamping();
+        
+        //! A method to add a force acting directly on a link.
+        /*!
+         \param index an id of the link
+         \param F the value of the force [N]
+         */
+        void AddLinkForce(size_t index, const Vector3& F);
+        
+        //! A method to add a torque acting directly on a link.
+        /*!
+         \param index an id of the link
+         \param tau the value of the torque [Nm]
+         */
+        void AddLinkTorque(size_t index, const Vector3& tau);
+        
+        //! A method used to compute accelerations of the links.
+        /*!
+         \param dt a step time of the simulation [s]
+         */
+        void UpdateAcceleration(Scalar dt);
+        
+        //! A method used to set the initial conditions for a joint.
+        /*!
+         \param index an id of the joint
+         \param position the initial position ([m] or [rad])
+         \param velocity the initial velocity ([m/s] or [rad/s])
+         */
+        void SetJointIc(size_t index, Scalar position, Scalar velocity);
+        
+        //! A method used to set damping characteristics of the joint.
+        /*!
+         \param index an id of the joint
+         \param constantFactor the value of the constant damping force [N] or torque [Nm]
+         \param viscousFactor the value of the damping factor multiplied by velocity
+         */
+        void SetJointDamping(size_t index, Scalar constantFactor, Scalar viscousFactor);
+     
+        //! A method returning the structure containing joint information.
+        /*!
+         \param index an id of the joint
+         \return a structure containing joint information
+         */
+        const FeatherstoneJoint& GetJoint(size_t index);
+     
+        //! A method returning the name of the joint.
+        /*!
+         \param index an id of the joint
+         \return the name of the joint
+         */
+        const std::string& GetJointName(size_t index) const;
+        
+        //! A method returning the position of the joint.
+        /*!
+         \param index an id of the joint
+         \param position a reference to the variable which will store the position
+         \param jointType a reference to a variable which will store the type of the joint
+         */
+        void GetJointPosition(size_t index, Scalar& position, btMultibodyLink::eFeatherstoneJointType& jointType);
+        
+        //! A method returning the velocity of the joint.
+        /*!
+         \param index an id of the joint
+         \param velocity a reference to the variable which will store the velocity
+         \param jointType a reference to a variable which will store the type of the joint
+         */
+        void GetJointVelocity(size_t index, Scalar& velocity, btMultibodyLink::eFeatherstoneJointType& jointType);
+        
+        //! A method returning the value of the directly applied torque.
+        /*!
+         \param index an id of the joint
+         \return the sum of the directly applied torque
+         */
+        Scalar GetJointTorque(size_t index);
+        
+        //! A method to change the maximum force/torque produced by the joint motor.
+        /*!
+         \param index the id of the joint
+         \param tau the maximum value of the applied force [N] or torque [Nm] 
+         */
+        void SetMaxMotorForceTorque(size_t index, Scalar maxT);
+        
+        //! A method returning the force or torque generated by the joint motor.
+        /*!
+         \param index an id of the joint
+         \return the value of the force [N] or torque [Nm] generated by the joint motor
+         */
+        Scalar GetMotorForceTorque(size_t index);
+        
+        //! A method returning the axis of the joint.
+        /*!
+         \param index an id of the joint
+         \return a unit vector parallel to the joint axis
+         */
+        Vector3 GetJointAxis(size_t index);
+        
+        /* COMMENT:
+         * Both vectors are in the CoG frame of the child link.
+         * The force is equal to the sum of reaction forces acting on the CoG.
+         * The torque is calculated as a cross product of a vector from CoG to joint pivot and the force defined above.
+         * The force acting on every link causes a reaction force and a torque on this link.
+         * If the rection torque acts around the axis of the joint, then this torque does not transfer directly to previous joints (only force is transferred)
+         */
+        
+        //! A method returning the joint feedback.
+        /*!
+         \param index an id of the joint
+         \param force a reference to a variable that will store the forces acting on the joint [N]
+         \param torque a reference to a variable that will store the torques acting on the joint [Nm]
+         */
+        size_t GetJointFeedback(size_t index, Vector3& force, Vector3& torque);
+        
+        //! A method used to set the position of the multibody in the world frame.
+        /*!
+         \param trans the transformation of the multibody base in the world frame
+         */
+        void SetBaseTransform(const Transform& trans);
+        
+        //! A method used to set if the multibody base should be rendered.
+        /*!
+         \param render a flag to set if the base should be rendered
+         */
+        void SetBaseRenderable(bool render);
+        
+        //! A method returning the structure containing link information.
+        /*!
+         \param index an id of the link
+         \return a structure containing link information
+         */
+        const FeatherstoneLink& GetLink(size_t index);
+        
+        //! A method returning the world frame position of the link.
+        /*!
+         \param index an id of the link
+         \return a position of the link in the world frame
+         */
+        Transform GetLinkTransform(size_t index);
+        
+        //! A method returning the linear velocity of the link.
+        /*!
+         \param index an id of the link
+         \return the linear velocity of the link [m/s]
+         */
+        Vector3 GetLinkLinearVelocity(size_t index);
+        
+        //! A method returning the angular velocity of the link.
+        /*!
+         \param index an id of the link
+         \return the angular velocity of the link [rad/s]
+         */
+        Vector3 GetLinkAngularVelocity(size_t index);
+        
+        //! A method returning the number of joints.
+        size_t GetNumOfJoints();
+        
+        //! A method returning the number of mobile joints.
+        size_t GetNumOfMovingJoints();
+        
+        //! A method returning the number of multibody links.
+        size_t GetNumOfLinks();
+        
+        //! A method returning a pointer to the Bullet multibody object.
+        btMultiBody* GetMultiBody();
+        
+        //! A method used to set if self collision is enabled for the whole multibody.
+        void SetSelfCollision(bool enabled);
+
+        //! A method informing if the self collisions are enabled for the whole multibody.
+        bool HasSelfCollision() const;
+
+        //! A method used to set the display mode of the links.
+        /*!
+         \param m a flag that defines the display style.
+         */
+        void SetDisplayMode(DisplayMode m);
+        
+        //! A method used to add the multibody to the simulation.
+        /*!
+         \param sm a pointer to the simulation manager
+         */
+        void AddToSimulation(SimulationManager* sm);
+        
+        //! A method used to add the multibody to the simulation.
+        /*!
+         \param sm a pointer to the simulation manager
+         \param origin the transformation of the multibody base in the world frame
+         */
+        void AddToSimulation(SimulationManager* sm, const Transform& origin);
+        
+        //! A method used to remove the multibody from the simulation.
+        /*!
+         \param sm a pointer to the simulation manager
+         */
+        void RemoveFromSimulation(SimulationManager* sm);
+
+        //! A method used to respawn the multibody at new position.
+        /*!
+         \param origin the transformation of the multibody base in the world frame
+         */
+        void Respawn(const Transform& origin);
+        
+        //! A method implementing the rendering of the multibody.
+        std::vector<Renderable> Render();
+        
+        //! A method returning the extents of the body axis alligned bounding box.
+        /*!
+         \param min a point located at the minimum coordinate corner
+         \param max a point located at the maximum coordinate corner
+         */
+        void GetAabb(Vector3& min, Vector3& max);
+        
+        //! A method returning the type of the entity.
+        EntityType GetType() const;
+        
+    private:
+        std::unique_ptr<btMultiBody> multiBody_;
+        std::vector<FeatherstoneLink> links_;
+        std::vector<FeatherstoneJoint> joints_;
+        bool baseRenderable_;
+    };
+}

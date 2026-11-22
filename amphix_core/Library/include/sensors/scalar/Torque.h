@@ -1,0 +1,75 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Torque.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 20/03/2018.
+//  Copyright (c) 2019-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "sensors/scalar/JointSensor.h"
+
+namespace amphix
+{
+    //! A class representing a torque sensor.
+    class Torque : public JointSensor
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param frequency the sampling frequency of the sensor [Hz] (-1 if updated every simulation step)
+         \param historyLength defines: -1 -> no history, 0 -> unlimited history, >0 -> history with a specified length
+         */
+        Torque(std::string_view uniqueName, Scalar frequency = Scalar(-1), int historyLength = -1);
+        
+        //! A method performing internal sensor state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        //! A method used to set the range of the sensor.
+        /*!
+         \param torqueMax the maximum measured torque [Nm]
+         */
+        void SetRange(Scalar torqueMax);
+        
+        //! A method used to set the noise characteristics of the sensor.
+        /*!
+         \param torqueStdDev standard deviation of torque measurement noise
+         */
+        void SetNoise(Scalar torqueStdDev);
+        
+        //! A method returning the type of the scalar sensor.
+        ScalarSensorType GetScalarSensorType() const override;
+
+        //! A method returning the construction info for the sensor.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the sensor based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<Torque> Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info);
+    };
+}
+

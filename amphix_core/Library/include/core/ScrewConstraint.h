@@ -1,0 +1,84 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  ScrewConstraint.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 12/04/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include <limits>
+#include <cmath>
+#include "BulletDynamics/ConstraintSolver/btSliderConstraint.h"
+#include "AmphixCommon.h"
+
+namespace amphix
+{
+    //! A class implementing a screw type constraint (not tested).
+    class ScrewConstraint : public btSliderConstraint
+    {
+    public:
+        ScrewConstraint(btRigidBody &_rbA, btRigidBody &_rbB, const Transform &_frameInA, const Transform &_frameInB, bool _useLinearReferenceFrameA)
+        : btSliderConstraint(_rbA, _rbB, _frameInA, _frameInB, _useLinearReferenceFrameA), threadPitch_(1.0) {}
+        
+        ScrewConstraint(btRigidBody &_rbB, const Transform &_frameInB, bool _useLinearReferenceFrameA)
+        : btSliderConstraint(_rbB, _frameInB, _useLinearReferenceFrameA), threadPitch_(1.0) {}
+        
+        virtual void getInfo1(btConstraintInfo1 *_info)
+        {
+            this->GetInfo1NonVirtual(_info);
+        }
+        
+        virtual void getInfo2(btConstraintInfo2 *_info)
+        {
+            this->GetInfo2NonVirtual(_info,
+                                      m_rbA.getCenterOfMassTransform(),
+                                      m_rbB.getCenterOfMassTransform(),
+                                      m_rbA.getLinearVelocity(),
+                                      m_rbB.getLinearVelocity(),
+                                      m_rbA.getInvMass(), m_rbB.getInvMass());
+        }
+        
+        void GetInfo1NonVirtual(btConstraintInfo1* info);
+        
+        void GetInfo2NonVirtual(btConstraintInfo2* info, const Transform& transA, const Transform& transB, const Vector3& linVelA, const Vector3& linVelB, Scalar rbAinvMass, Scalar rbBinvMass);
+        
+        Scalar GetLinearPosition();
+        Scalar GetAngularPosition();
+        
+        // needed non-const version for SetForce
+        btRigidBody& getRigidBodyA();
+        btRigidBody& getRigidBodyB();
+        
+        virtual void SetThreadPitch(double _threadPitch)
+        {
+            this->threadPitch_ = -_threadPitch;
+        }
+        
+        virtual double GetThreadPitch() const
+        {
+            return -this->threadPitch_;
+        }
+        
+    private:
+        double threadPitch_;
+    };
+}

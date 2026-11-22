@@ -1,0 +1,133 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  ThermalCamera.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 26/05/24.
+//  Copyright (c) 2024-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include <functional>
+#include "sensors/vision/Camera.h"
+#include "graphics/OpenGLDataStructs.h"
+
+namespace amphix
+{
+    class OpenGLThermalCamera;
+    
+    //! A class representing an optical flow camera.
+    class ThermalCamera : public Camera
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param resolutionX the horizontal resolution [pix]
+         \param resolutionY the vertical resolution[pix]
+         \param hFOVDeg the horizontal field of view [deg]
+         \param minTemp minimum temperature that the sensor can measure [degC]
+         \param maxTemp maximum temperature that the sensor can measure [degC]
+         \param frequency the sampling frequency of the sensor [Hz] (-1 if updated every simulation step)
+         \param near the minimum drawing distance [m]
+         \param far the maximum drawing distance [m]
+         */
+        ThermalCamera(std::string_view uniqueName, unsigned int resolutionX, unsigned int resolutionY, Scalar hFOVDeg, Scalar minTemp, Scalar maxTemp, 
+            Scalar frequency = Scalar(-1), Scalar near = Scalar(STD_NEAR_PLANE_DISTANCE), Scalar far = Scalar(STD_FAR_PLANE_DISTANCE));
+        
+        //! A method performing internal sensor state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        //! A method used to setup the OpenGL camera transformation.
+        /*!
+         \param eye the position of the camera eye [m]
+         \param dir a unit vector parallel to the optical axis of the camera
+         \param up a unit vector pointing up (from center of image to the top edge of the image)
+         */
+        void SetupCamera(const Vector3& eye, const Vector3& dir, const Vector3& up) override;
+        
+        //! A method used to inform about new data.
+        /*!
+         \param index the id of the OpenGL camera uploading the data
+         */
+        void NewDataReady(void* data, unsigned int index = 0) override;
+        
+        //! A method used to set a callback function called when new data is available.
+        /*!
+         \param callback a function to be called
+         */
+        void InstallNewDataHandler(std::function<void(ThermalCamera*)> callback);
+        
+        //! A method used to set the noise characteristics of the sensor.
+        /*!
+         \param tempStdDev standard deviation of the temperature measurement [degC]
+         */
+        void SetNoise(float tempStdDev);
+
+        //! A method used to set the display settings of the sensor.
+        /*!
+         \param cm the color map used to display the image
+         \param minTemp the minimum temperature displayed [degC]
+         \param maxTemp the maximum temperature displayed [degC]
+         */
+        void SetDisplaySettings(ColorMap cm, Scalar minTemp, Scalar maxTemp);
+
+        //! A method returning the pointer to the image data.
+        /*!
+         \param index the id of the OpenGL camera for which the data pointer is requested
+         \return pointer to the image data buffer
+         */
+        void* GetImageDataPointer(unsigned int index = 0);
+
+        //! A method returning a pointer to the visualisation image data.
+        GLubyte* GetDisplayDataPointer();
+        
+        //! A method returning the type of the vision sensor.
+        VisionSensorType GetVisionSensorType() const override;
+        
+        //! A method returning a pointer to the underlaying OpenGLView object.
+        OpenGLView* GetOpenGlView() const override;
+
+        //! A method returning the construction info for the sensor.
+        static ConstructInfo GetConstructInfo();
+
+        //! A method constructing the sensor based on info structure.
+        /*!
+         \param info a construction info structure
+        */
+        static std::unique_ptr<ThermalCamera> Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info);
+
+    private:
+        void InitGraphics(bool& seesParticles);
+        
+        OpenGLThermalCamera* glCamera_;
+        GLfloat* temperatureData_;
+        std::vector<GLubyte> displayData_;
+        glm::vec2 depthRange_;
+        GLfloat noiseStdDev_;
+        glm::vec2 measurementRange_;
+        ColorMap colorMap_;
+        glm::vec2 displayRange_;
+        std::function<void(ThermalCamera*)> newDataCallback_;
+    };
+}

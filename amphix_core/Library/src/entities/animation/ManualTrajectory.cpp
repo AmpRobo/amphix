@@ -1,0 +1,68 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  ManualTrajectory.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 23/11/2020.
+//  Copyright (c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/animation/ManualTrajectory.h"
+
+namespace amphix
+{
+
+ManualTrajectory::ManualTrajectory() : Trajectory(PlaybackMode::ONETIME)
+{
+    interpTrans_ = I4();
+    interpVel_ = V0();
+    interpAngVel_ = V0();
+    interpAcc_ = V0();
+    endTime_ = 1e16; //Never ends
+}
+
+void ManualTrajectory::SetTransform(const Transform& T)
+{
+    interpTrans_ = T;
+}
+
+void ManualTrajectory::SetLinearVelocity(const Vector3& v)
+{
+    interpVel_ = v;
+}
+
+void ManualTrajectory::SetAngularVelocity(const Vector3& omega)
+{
+    interpAngVel_ = omega;
+}
+
+void ManualTrajectory::Interpolate()
+{
+    return;
+}
+
+std::vector<Renderable> ManualTrajectory::Render()
+{
+    Renderable frame;
+    frame.type = RenderableType::SENSOR_CS;
+    frame.model = glMatrixFromTransform(interpTrans_);
+    return {frame};
+}
+
+}

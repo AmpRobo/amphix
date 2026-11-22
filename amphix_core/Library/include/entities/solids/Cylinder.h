@@ -1,0 +1,59 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Cylinder.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 1/30/13.
+//  Copyright (c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "entities/SolidEntity.h"
+
+namespace amphix
+{
+    //! A class representing a cylinder-shaped (cylinder axis parallel to z axis) rigid body.
+    class Cylinder : public SolidEntity
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the cylinder
+         \param phy the specific settings of the physics computation for the body
+         \param radius a radius of the cylinder
+         \param height a height of the cylinder
+         \param origin a transformation of the physical mesh (graphical is the same for cylinder)
+         \param material the name of the material the cylinder is made of
+         \param look the name of the graphical material used for rendering
+         \param thickness defines the thickness of the cylinder walls, if positive the cylinder is treated as shell
+         */
+        Cylinder(std::string_view uniqueName, PhysicsSettings phy, Scalar radius, Scalar height, const Transform& origin, std::string_view material, std::string_view look, Scalar thickness = Scalar(-1));
+        
+        //! A method that returns the type of body.
+        SolidType GetSolidType() const;
+        
+        //! A method that returns the collision shape for the cylinder.
+        std::unique_ptr<btCollisionShape> BuildCollisionShape();
+        
+    private:
+        Scalar r_;
+        Scalar halfHeight_;
+    };
+}

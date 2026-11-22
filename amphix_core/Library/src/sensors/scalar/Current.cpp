@@ -1,0 +1,78 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Current.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 09/06/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "sensors/scalar/Current.h"
+
+#include "actuators/DCMotor.h"
+#include "sensors/Sample.h"
+
+namespace amphix
+{
+
+Current::Current(std::string_view uniqueName, Scalar frequency, int historyLength) : ScalarSensor(uniqueName, frequency, historyLength)
+{
+    motor_ = nullptr;
+    channels_.push_back(SensorChannel("Current", QuantityType::CURRENT));
+}
+
+Transform Current::GetSensorFrame() const
+{
+    return I4();
+}
+
+void Current::GetSensorVelocity(Vector3& linear, Vector3& angular) const
+{
+    linear = V0();
+    angular = V0();
+}
+
+void Current::AttachToMotor(DCMotor* m)
+{
+    if(m != nullptr)
+        motor_ = m;
+}
+
+void Current::InternalUpdate(Scalar dt)
+{
+    // Read current
+    Scalar current = Scalar(0);
+    if(motor_ != nullptr)
+        current = motor_->GetCurrent();
+    
+    // Record sample
+    AddSampleToHistory(std::make_unique<Sample>(std::vector<Scalar>({current})));
+}
+
+SensorType Current::GetType() const
+{
+    return SensorType::OTHER;
+}
+
+ScalarSensorType Current::GetScalarSensorType() const
+{
+    return ScalarSensorType::CURRENT;
+}
+
+}

@@ -1,0 +1,55 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Plane.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 1/30/13.
+//  Copyright(c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/statics/Plane.h"
+
+#include "core/SimulationApp.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+
+Plane::Plane(std::string_view uniqueName, Scalar planeSize, std::string_view material, std::string_view look, float uvScale) : StaticEntity(uniqueName, material, look)
+{
+    phyMesh_ = OpenGLContent::BuildPlane(planeSize/2.f, uvScale > 0.f ? uvScale : 1.f);
+    std::unique_ptr<btStaticPlaneShape> shape = std::make_unique<btStaticPlaneShape>(Vector3(0,0,-1), 0);
+    shape->setMargin(COLLISION_MARGIN);
+    collisionShape_ = std::move(shape);
+    BuildRigidBody();
+}
+
+void Plane::GetAabb(Vector3 &min, Vector3 &max)
+{
+    //Plane shouldn't affect shadow calculation
+    min.setValue(BT_LARGE_FLOAT, BT_LARGE_FLOAT, BT_LARGE_FLOAT);
+    max.setValue(-BT_LARGE_FLOAT, -BT_LARGE_FLOAT, -BT_LARGE_FLOAT);
+}
+
+StaticEntityType Plane::GetStaticType()
+{
+    return StaticEntityType::PLANE;
+}
+
+}

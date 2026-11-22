@@ -1,0 +1,78 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  LinkActuator.cpp
+//  Amphix
+//
+//  Created by Patryk Cieślak on 23/11/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "actuators/LinkActuator.h"
+
+#include "entities/SolidEntity.h"
+
+namespace amphix
+{
+
+LinkActuator::LinkActuator(std::string_view uniqueName) : Actuator(uniqueName)
+{
+    attach_ = nullptr;
+    o2a_ = I4();
+}
+
+void LinkActuator::SetRelativeActuatorFrame(const Transform& origin)
+{
+    o2a_ = origin;
+}
+
+Transform LinkActuator::GetActuatorFrame() const
+{
+    if(attach_ != nullptr)
+        return attach_->GetOTransform() * o2a_;
+    else
+        return o2a_;
+}
+
+ActuatorType LinkActuator::GetType() const
+{
+    return ActuatorType::LINK;
+}
+
+void LinkActuator::AttachToSolid(SolidEntity* body, const Transform& origin)
+{
+    if(body != nullptr)
+    {
+        o2a_ = origin;
+        attach_ = body;
+    }
+}
+
+std::vector<Renderable> LinkActuator::Render()
+{
+    std::vector<Renderable> items(0);
+
+    Renderable item;
+    item.type = RenderableType::SENSOR_CS;
+    item.model = glMatrixFromTransform(GetActuatorFrame());
+    items.push_back(item);
+
+    return items;
+}
+    
+}

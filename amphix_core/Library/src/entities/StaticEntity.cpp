@@ -1,0 +1,168 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  StaticEntity.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 24/05/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/StaticEntity.h"
+
+#include "core/GraphicalSimulationApp.h"
+#include "core/SimulationManager.h"
+#include "graphics/OpenGLPipeline.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+
+StaticEntity::StaticEntity(std::string_view uniqueName, std::string_view material, std::string_view look) : Entity(uniqueName)
+{
+    mat_ = SimulationApp::GetApp()->GetSimulationManager()->GetMaterialManager()->GetMaterial(material);
+    if(SimulationApp::GetApp()->HasGraphics())
+        lookId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->GetLookId(look);
+    else
+        lookId_ = -1;
+    phyObjectId_ = -1;
+    dm_ = DisplayMode::GRAPHICAL;
+}
+
+EntityType StaticEntity::GetType() const
+{
+    return EntityType::STATIC;
+}
+
+Material StaticEntity::GetMaterial() const
+{
+    return mat_;
+}
+
+void StaticEntity::SetTransform(const Transform& trans)
+{
+    if(rigidBody_ != nullptr)
+    {
+        rigidBody_->getMotionState()->setWorldTransform(trans);
+        rigidBody_->setCenterOfMassTransform(trans);
+    }
+}
+
+Transform StaticEntity::GetTransform()
+{
+    if(rigidBody_ != nullptr)
+    {
+        Transform T;
+        rigidBody_->getMotionState()->getWorldTransform(T);
+        return T;
+    }
+    else
+        return Transform::getIdentity();
+}
+
+btRigidBody* StaticEntity::GetRigidBody()
+{
+    return rigidBody_.get();
+}
+
+void StaticEntity::GetAabb(Vector3& min, Vector3& max)
+{
+    if(rigidBody_ != nullptr)
+        rigidBody_->getAabb(min, max);
+}
+
+void StaticEntity::SetDisplayMode(DisplayMode m)
+{
+    dm_ = m;
+}
+
+std::vector<Renderable> StaticEntity::Render()
+{
+    std::vector<Renderable> items(0);
+    
+    if(rigidBody_ != nullptr && phyObjectId_ >= 0 && IsRenderable())
+    {
+        Transform trans;
+        rigidBody_->getMotionState()->getWorldTransform(trans);
+        
+        Renderable item;
+        item.type = RenderableType::SOLID;
+        item.materialName = mat_.name;
+        item.objectId = phyObjectId_;
+        item.lookId = dm_ == DisplayMode::GRAPHICAL ? lookId_ : -1;
+        item.model = glMatrixFromTransform(trans);
+        items.push_back(item);
+    }
+    
+    return items;
+}
+
+void StaticEntity::BuildGraphicalObject()
+{
+    if(phyMesh_ == nullptr || !SimulationApp::GetApp()->HasGraphics())
+        return;
+    
+    phyObjectId_ = static_cast<GraphicalSimulationApp*>(SimulationApp::GetApp())->GetGlPipeline()->GetContent()->BuildObject(phyMesh_.get());
+}
+
+void StaticEntity::BuildRigidBody()
+{
+    motionState_ = std::make_unique<btDefaultMotionState>();
+    
+    btRigidBody::btRigidBodyConstructionInfo rigidBodyCI(Scalar(0), motionState_.get(), collisionShape_.get(), Vector3(0,0,0));
+    rigidBodyCI.m_friction = rigidBodyCI.m_rollingFriction = rigidBodyCI.m_restitution = Scalar(0); //not used
+    rigidBodyCI.m_linearDamping = rigidBodyCI.m_angularDamping = Scalar(0); //not used
+    rigidBodyCI.m_linearSleepingThreshold = rigidBodyCI.m_angularSleepingThreshold = Scalar(0); //not used
+    rigidBodyCI.m_additionalDamping = false;
+    
+    rigidBody_ = std::make_unique<btRigidBody>(rigidBodyCI);
+    rigidBody_->setUserPointer(this);
+    rigidBody_->setCollisionFlags(rigidBody_->getCollisionFlags() | btCollisionObject::CF_STATIC_OBJECT | btCollisionObject::CF_CUSTOM_MATERIAL_CALLBACK);
+    
+    BuildGraphicalObject();
+}
+
+void StaticEntity::AddToSimulation(SimulationManager* sm)
+{
+    AddToSimulation(sm, Transform::getIdentity());
+}
+
+void StaticEntity::AddToSimulation(SimulationManager* sm, const Transform& origin)
+{
+    if(rigidBody_ != nullptr)
+    {
+        motionState_ = std::make_unique<btDefaultMotionState>(origin);
+        rigidBody_->setMotionState(motionState_.get());
+        sm->GetDynamicsWorld()->addRigidBody(rigidBody_.get(), MASK_STATIC, MASK_DYNAMIC);
+    }
+}
+
+//Static members
+void StaticEntity::GroupTransform(std::vector<StaticEntity*>& objects, const Transform& centre, const Transform& transform)
+{
+    for(unsigned int i=0; i<objects.size(); ++i)
+    {
+        Transform Tw = objects[i]->GetTransform();
+        Transform Tc = centre.inverse() * Tw;
+        Tc = transform * Tc;
+        Tw = centre * Tc;
+        objects[i]->SetTransform(Tw);
+    }
+}
+
+}

@@ -1,0 +1,84 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  USBL.cpp
+//  Amphix
+//
+//  Created by Patryk Cieślak on 25/02/2020.
+//  Copyright (c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "comms/USBL.h"
+
+namespace amphix
+{
+    
+std::random_device USBL::randomDevice;
+std::mt19937 USBL::randomGenerator(randomDevice());
+    
+USBL::USBL(std::string_view uniqueName, uint64_t deviceId, Scalar minVerticalFOVDeg, Scalar maxVerticalFOVDeg, Scalar operatingRange)
+           : AcousticModem(uniqueName, deviceId, minVerticalFOVDeg, maxVerticalFOVDeg, operatingRange)
+{
+    ping_ = false;
+    noise_ = false;
+}
+    
+std::map<uint64_t, BeaconInfo>& USBL::GetBeaconInfo()
+{
+    return beacons_;
+}
+
+CommType USBL::GetType() const
+{
+    return CommType::USBL;
+}
+
+void USBL::EnableAutoPing(Scalar rate)
+{
+    if(rate > Scalar(0))
+    {
+        pingTime_ = Scalar(0);
+        pingRate_ = rate;
+        ping_ = true;
+    }
+}
+ 
+void USBL::DisableAutoPing()
+{
+    ping_ = false;
+}
+
+void USBL::InternalUpdate(Scalar dt)
+{
+    AcousticModem::InternalUpdate(dt);
+    
+    //Auto pinging with fixed rate
+    if(ping_ && pingRate_ > Scalar(0))
+    {
+        pingTime_ += dt;
+        Scalar invRate = Scalar(1)/pingRate_;
+        
+        if(pingTime_ >= invRate)
+        {
+            Comm::SendMessage("PING");
+            pingTime_ -= invRate;
+        }
+    }
+}
+
+}

@@ -1,0 +1,325 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Ocean.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 19/10/17.
+//  Copyright(c) 2017-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/forcefields/Ocean.h"
+
+#include <algorithm>
+#include "utils/SystemUtil.hpp"
+#include "entities/forcefields/VelocityField.h"
+#include "entities/SolidEntity.h"
+#include "entities/CableEntity.h"
+#include "graphics/OpenGLFlatOcean.h"
+#include "graphics/OpenGLRealOcean.h"
+#include "actuators/Thruster.h"
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
+
+namespace amphix
+{
+
+Ocean::Ocean(std::string_view uniqueName, Scalar waves, Fluid l) : ForcefieldEntity(uniqueName)
+{
+    ghost_->setCollisionFlags(ghost_->getCollisionFlags() | btCollisionObject::CF_STATIC_OBJECT);
+    oceanState_ = waves > Scalar(2.0) ? Scalar(2.0) : waves;
+     
+    Scalar size(100000);
+    depth_ = size;
+    Vector3 halfExtents = Vector3(size/Scalar(2), size/Scalar(2), size/Scalar(2));
+    ghost_->setWorldTransform(Transform(Quaternion::getIdentity(), Vector3(0, 0, size/Scalar(2) - oceanState_*Scalar(3)))); //Move ocean influence zone a bit up to account for waves
+    collisionShape_ = std::make_unique<btBoxShape>(halfExtents);
+    ghost_->setCollisionShape(collisionShape_.get());
+    
+    velocityFieldsEnabled_ = false;
+    liquid_ = l;
+    wavesDebug_.type = RenderableType::HYDRO_POINTS;
+    wavesDebug_.model = glm::mat4(1.f);
+    wavesDebug_.data = std::make_shared<std::vector<glm::vec3>>();
+    waterType_ = Scalar(0.0);
+}
+
+bool Ocean::HasWaves() const
+{
+    return oceanState_ > Scalar(0);
+}
+
+bool Ocean::HasParticles() const
+{
+    if(glOcean_ != nullptr)
+        return glOcean_->GetParticlesEnabled();
+    else
+        return false;
+}
+
+Scalar Ocean::GetWaterType() const
+{
+    return waterType_;
+}
+        
+OpenGLOcean* Ocean::GetOpenGlOcean()
+{
+    return glOcean_.get();
+}
+
+ForcefieldType Ocean::GetForcefieldType()
+{
+    return ForcefieldType::OCEAN;
+}
+
+Fluid Ocean::GetLiquid() const
+{
+    return liquid_;
+}
+
+VelocityField* Ocean::GetVelocityField(size_t index)
+{
+    if(index < velocityFields_.size())
+        return velocityFields_[index].get();
+    else
+        return nullptr;
+}
+
+void Ocean::SetWaterType(Scalar jerlov)
+{ 
+    if(glOcean_ != nullptr)
+    {
+        waterType_ = jerlov > Scalar(1) ? Scalar(1) : (jerlov < Scalar(0) ? Scalar(0) : jerlov);
+        glOcean_->SetWaterType((float)waterType_);
+    }
+}
+
+void Ocean::SetParticles(bool enabled)
+{
+    if(glOcean_ != nullptr)
+        glOcean_->SetParticles(enabled);
+}
+
+void Ocean::SetConditions(Scalar waterTemp)
+{
+    if(glOcean_ != nullptr)
+        glOcean_->SetWaterTemperature((float)waterTemp);
+}
+
+void Ocean::AddVelocityField(std::unique_ptr<VelocityField> field)
+{
+    velocityFields_.push_back(std::move(field));
+}
+
+bool Ocean::IsInsideFluid(const Vector3& point)
+{
+    return GetDepth(point) >= Scalar(0);
+}
+
+float Ocean::GetDepth(const glm::vec3& point)
+{
+    if(HasWaves()) //Geometric waves
+    {
+        GLfloat waveHeight = glOcean_->ComputeWaveHeight(point.x, point.y);
+        glm::vec3 wavePoint(point.x, point.y, waveHeight);
+#ifdef DEBUG_WAVES
+        wavesDebug.getDataAsPoints()->push_back(wavePoint);
+#endif
+        return point.z - waveHeight;
+    }
+    else //Flat surface
+    {
+        glm::vec3 wavePoint(point.x, point.y, 0.f);
+#ifdef DEBUG_WAVES  
+        wavesDebug.getDataAsPoints()->push_back(wavePoint);
+#endif
+        return point.z;
+    }
+}
+
+Scalar Ocean::GetDepth(const Vector3& point)
+{
+    return Scalar(GetDepth(glm::vec3((GLfloat)point.getX(), (GLfloat)point.getY(), (GLfloat)point.getZ())));
+}
+
+Scalar Ocean::GetPressure(const Vector3& point)
+{
+    Scalar g = SimulationApp::GetApp()->GetSimulationManager()->GetGravity().getZ();
+    Scalar d = GetDepth(point);
+    Scalar pressure = d > Scalar(0) ? d*liquid_.density*g : Scalar(0);
+    return pressure;
+}
+
+Vector3 Ocean::GetFluidVelocity(const Vector3& point) const
+{
+    if(velocityFieldsEnabled_)
+    {
+        Vector3 fv = V0();
+        for(size_t i=0; i<velocityFields_.size(); ++i)
+        {
+            if(velocityFields_[i]->IsEnabled())
+                fv += velocityFields_[i]->GetVelocityAtPoint(point);
+        }
+        return fv;
+    }
+    return V0();
+}
+
+glm::vec3 Ocean::GetFluidVelocity(const glm::vec3& point) const
+{
+    return glVectorFromVector(GetFluidVelocity(Vector3(point.x, point.y, point.z)));
+}
+
+void Ocean::EnableVelocityFields()
+{
+    velocityFieldsEnabled_ = true;
+}
+
+void Ocean::DisableVelocityFields()
+{
+    velocityFieldsEnabled_ = false;
+}
+
+void Ocean::UpdateVelocityFieldsData()
+{
+    if(glOcean_ != NULL)
+        glOcean_->UpdateOceanCurrentsData(glOceanCurrentsUBOData_);
+}
+
+void Ocean::ClearVelocityFields()
+{
+    velocityFields_.clear();
+}
+
+void Ocean::ApplyFluidForces(btDynamicsWorld* world, btCollisionObject* co, bool recompute)
+{
+    Entity* ent;
+    
+    if (btRigidBody* rb = dynamic_cast<btRigidBody*>(co))
+    {
+        if (rb->isStaticOrKinematicObject())
+            return;
+        else
+            ent = static_cast<Entity*>(rb->getUserPointer());
+    }
+    else if (btMultiBodyLinkCollider* mbl = dynamic_cast<btMultiBodyLinkCollider*>(co))
+    {
+        if (mbl->isStaticOrKinematicObject())
+            return;
+        else
+            ent = static_cast<Entity*>(mbl->getUserPointer());
+    }
+    else if (btSoftBody* sb = dynamic_cast<btSoftBody*>(co))
+    {
+        ent = static_cast<Entity*>(sb->getUserPointer());
+    }
+    else
+        return;
+      
+    HydrodynamicsSettings settings;
+    
+    if (ent->GetType() == EntityType::SOLID)
+    {
+        if(recompute)
+        {
+            settings.dampingForces = true;
+            settings.reallisticBuoyancy = true;
+            ((SolidEntity*)ent)->ComputeHydrodynamicForces(settings, this);
+        }
+        
+        ((SolidEntity*)ent)->ApplyHydrodynamicForces();
+    }
+    else if (ent->GetType() == EntityType::CABLE)
+    {
+        if(recompute)
+        {
+            settings.dampingForces = true;
+            settings.reallisticBuoyancy = true;
+            ((CableEntity*)ent)->ComputeHydrodynamicForces(settings, this);
+        }
+        
+        ((CableEntity*)ent)->ApplyHydrodynamicForces();
+    }
+}
+
+void Ocean::InitGraphics(SDL_mutex* hydrodynamics)
+{
+    if(oceanState_ > 0.0)
+        glOcean_ = std::make_unique<OpenGLRealOcean>(depth_, oceanState_, hydrodynamics);
+    else
+        glOcean_ = std::make_unique<OpenGLFlatOcean>(depth_);
+    SetWaterType(0.2);
+}
+
+std::vector<Renderable> Ocean::Render()
+{
+    std::vector<std::unique_ptr<Actuator, ActuatorDeleter>> act;
+    return Render(act);
+}
+
+std::vector<Renderable> Ocean::Render(const std::vector<std::unique_ptr<Actuator, ActuatorDeleter>>& act)
+{
+    std::vector<Renderable> items(0);
+    
+    //Update currents data
+    glOceanCurrentsUBOData_.gravity = glm::vec3(0.f,0.f,9.81f);
+    glOceanCurrentsUBOData_.numCurrents = 0;
+
+    if(velocityFieldsEnabled_)
+    {
+        for(size_t i=0; i<velocityFields_.size(); ++i)
+            if(velocityFields_[i]->IsEnabled())
+            {
+                std::vector<Renderable> citems = velocityFields_[i]->Render(glOceanCurrentsUBOData_.currents[glOceanCurrentsUBOData_.numCurrents]);
+                items.insert(items.end(), citems.begin(), citems.end());
+                ++glOceanCurrentsUBOData_.numCurrents;
+            }
+    }
+    
+    for(size_t i=0; i<act.size(); ++i)
+        if (act[i]->GetType() == ActuatorType::LINK 
+            && static_cast<LinkActuator*>(act[i].get())->GetLinkActuatorType() == LinkActuatorType::THRUSTER)
+        {
+            Thruster* th = static_cast<Thruster*>(act[i].get());
+            Transform thFrame = th->GetActuatorFrame();
+            Vector3 thPos = thFrame.getOrigin();
+            Vector3 thDir = -thFrame.getBasis().getColumn(0);
+            Scalar R = th->GetPropellerDiameter()/Scalar(2);
+            Scalar vel = (th->IsPropellerRight() ? Scalar(0.1) : Scalar(-0.1)) * th->GetThrust();
+            glOceanCurrentsUBOData_.currents[glOceanCurrentsUBOData_.numCurrents].posR = glm::vec4((GLfloat)thPos.getX(), 
+                                                                             (GLfloat)thPos.getY(), 
+                                                                             (GLfloat)thPos.getZ(), (GLfloat)R);
+            glOceanCurrentsUBOData_.currents[glOceanCurrentsUBOData_.numCurrents].dirV = glm::vec4((GLfloat)thDir.getX(),
+                                                                             (GLfloat)thDir.getY(),
+                                                                             (GLfloat)thDir.getZ(),
+                                                                             (GLfloat)vel);
+            glOceanCurrentsUBOData_.currents[glOceanCurrentsUBOData_.numCurrents].params = glm::vec3(0.f);
+            glOceanCurrentsUBOData_.currents[glOceanCurrentsUBOData_.numCurrents].type = 10;
+            ++glOceanCurrentsUBOData_.numCurrents;
+        }
+
+    if(wavesDebug_.GetDataAsPoints()->size() > 0)
+    {
+        items.push_back(wavesDebug_);
+        wavesDebug_.GetDataAsPoints()->clear();
+    }
+
+    return items;
+}
+
+}

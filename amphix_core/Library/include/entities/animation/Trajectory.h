@@ -1,0 +1,92 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Trajectory.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 21/10/20.
+//  Copyright(c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "AmphixCommon.h"
+#include "graphics/OpenGLDataStructs.h"
+
+namespace amphix
+{
+    //! An enum representing available trajectory playback modes.
+    enum class PlaybackMode {ONETIME, REPEAT, BOOMERANG};
+
+    //! An abstract class representing a trajectory (time parametrized path).
+    class Trajectory
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param playback an enum representing the desired playback mode
+         */
+        Trajectory(PlaybackMode playback);
+
+        //! A destructor.
+        virtual ~Trajectory() = default;
+
+        //! A method updating the trajectory position.
+        /*!
+         \param dt a time step [s]
+         */
+        void Play(Scalar dt);
+
+        //! A method updating the interpolated transform and velocities.
+        virtual void Interpolate() = 0;
+
+        //! A method returning the elements that should be rendered.
+        virtual std::vector<Renderable> Render() = 0;
+
+        //! A method returning the current interpolated transform.
+        Transform GetInterpolatedTransform() const;
+
+        //! A method returning the current interpolated linear velocity.
+        Vector3 GetInterpolatedLinearVelocity() const;
+
+        //! A method returning the current interpolated angular velocity.
+        Vector3 GetInterpolatedAngularVelocity() const;
+
+        //! A method returning the current interpolated linear acceleration.
+        Vector3 GetInterpolatedLinearAcceleration() const;
+
+        //! A method returning the current playback time.
+        Scalar GetPlaybackTime() const;
+
+        //! A method returning the current playback iteration.
+        unsigned int GetPlaybackIteration() const;
+
+        static void CalculateVelocityShortestPath(const Transform &transform0, const Transform &transform1, Scalar timeStep, Vector3 &linVel, Vector3 &angVel);
+    
+    protected:
+        PlaybackMode playMode_;
+        Scalar playTime_;
+        Scalar endTime_;
+        unsigned int iteration_;
+        bool forward_;
+        Transform interpTrans_;
+        Vector3 interpVel_;
+        Vector3 interpAngVel_;
+        Vector3 interpAcc_;
+    };
+}

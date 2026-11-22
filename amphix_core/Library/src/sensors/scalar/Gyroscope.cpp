@@ -1,0 +1,141 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Gyroscope.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 29/03/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "sensors/scalar/Gyroscope.h"
+
+#include "core/DeviceFactory.h"
+#include "entities/MovingEntity.h"
+#include "sensors/Sample.h"
+
+namespace amphix
+{
+
+Gyroscope::Gyroscope(std::string_view uniqueName, Scalar frequency, int historyLength) : LinkSensor(uniqueName, frequency, historyLength)
+{
+    channels_.push_back(SensorChannel("Angular velocity X", QuantityType::ANGULAR_VELOCITY));
+    channels_.push_back(SensorChannel("Angular velocity Y", QuantityType::ANGULAR_VELOCITY));
+    channels_.push_back(SensorChannel("Angular velocity Z", QuantityType::ANGULAR_VELOCITY));
+    bias_ = V0();
+}
+
+void Gyroscope::InternalUpdate(Scalar dt)
+{
+    //calculate transformation from global to gyro frame
+    Matrix3 toGyroFrame = GetSensorFrame().getBasis().inverse();
+    
+    //get angular velocity
+    Vector3 omega = toGyroFrame * attach_->GetAngularVelocity();
+
+    //add bias error
+    omega += bias_;
+
+    //record sample
+    AddSampleToHistory(std::make_unique<Sample>(std::vector<Scalar>({omega.x(), omega.y(), omega.z()})));
+}
+
+void Gyroscope::SetRange(Vector3 angularVelocityMax)
+{
+    channels_[0].rangeMin = -btClamped(angularVelocityMax.getX(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+    channels_[1].rangeMin = -btClamped(angularVelocityMax.getY(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+    channels_[2].rangeMin = -btClamped(angularVelocityMax.getZ(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+    channels_[0].rangeMax = btClamped(angularVelocityMax.getX(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+    channels_[1].rangeMax = btClamped(angularVelocityMax.getY(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+    channels_[2].rangeMax = btClamped(angularVelocityMax.getZ(), Scalar(0), Scalar(BT_LARGE_FLOAT));
+}
+
+void Gyroscope::SetNoise(Vector3 angularVelocityStdDev, Vector3 angularVelocityBias)
+{
+    channels_[0].SetStdDev(btClamped(angularVelocityStdDev.getX(), Scalar(0), Scalar(BT_LARGE_FLOAT)));
+    channels_[1].SetStdDev(btClamped(angularVelocityStdDev.getY(), Scalar(0), Scalar(BT_LARGE_FLOAT)));
+    channels_[2].SetStdDev(btClamped(angularVelocityStdDev.getZ(), Scalar(0), Scalar(BT_LARGE_FLOAT)));
+    bias_ = angularVelocityBias;
+}
+
+ScalarSensorType Gyroscope::GetScalarSensorType() const
+{
+    return ScalarSensorType::GYRO;
+}
+
+// Statics
+
+ConstructInfo Gyroscope::GetConstructInfo()
+{
+    ConstructInfo info;
+    ConstructInfoNode node;
+    
+    // History
+    node.optional = true;
+    node.attributes.insert({"samples", {ConstructInfoValueType::INT, false}});
+    info.nodes.insert({"history", node});
+
+    // Range
+    node.attributes.clear(); // Clear temporary
+    node.optional = true;
+    node.attributes.insert({"angular_velocity", {ConstructInfoValueType::VECTOR3, false}});
+    info.nodes.insert({"range", node});
+
+    // Noise
+    node.attributes.clear();
+    node.optional = true;
+    node.attributes.insert({"angular_velocity", {ConstructInfoValueType::VECTOR3, true}});
+    node.attributes.insert({"bias", {ConstructInfoValueType::VECTOR3, true}});
+    info.nodes.insert({"noise", node});
+    
+    return info;
+}
+
+std::unique_ptr<Gyroscope> Gyroscope::Construct(std::string_view uniqueName, Scalar frequency, ConstructInfo& info)
+{
+    // History (optional)
+    int history = -1;
+    ConstructInfoValue& value = info.nodes.at("history").attributes.at("samples");
+    if (value.valid)
+        history = std::get<int>(value.value);
+    
+    // Create sensor
+    std::unique_ptr<Gyroscope> sensor = std::make_unique<Gyroscope>(uniqueName, frequency, history);    
+
+    // Range (optional)
+    value = info.nodes.at("range").attributes.at("angular_velocity");
+    if (value.valid)
+        sensor->SetRange(std::get<Vector3>(value.value));
+
+    // Noise (optional)
+    Vector3 noise = V0();
+    Vector3 bias = V0();
+    value = info.nodes.at("noise").attributes.at("angular_velocity");
+    if (value.valid)
+        noise = std::get<Vector3>(value.value);
+    value = info.nodes.at("noise").attributes.at("bias");
+    if (value.valid)
+        bias = std::get<Vector3>(value.value);
+    sensor->SetNoise(noise, bias);
+
+    return sensor;
+}
+
+REGISTER_SENSOR("gyroscope", Gyroscope)
+
+}

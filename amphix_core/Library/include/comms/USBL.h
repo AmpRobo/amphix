@@ -1,0 +1,89 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  USBL.h
+//  Amphix
+//
+//  Created by Patryk Cieślak on 25/02/2020.
+//  Copyright (c) 2020-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "comms/AcousticModem.h"
+#include <random>
+
+namespace amphix
+{
+    struct BeaconInfo
+    {
+        Quaternion localOri; // Orientation of the USBL in the world frame (internal IMU)
+        Scalar localDepth;   // Depth measured by the USBL (internal pressure sensor) 
+        Scalar t;            // Roundtrip acoustic signal travel time
+        Vector3 relPos;      // Position of beacon in the USBL frame
+        Scalar elevation;    // Elevation angle computed from beacon response
+        Scalar azimuth;      // Azimuth angle computed from beacon response
+        Scalar range;        // Distance to the beacon
+    };
+
+    //! An abstract class representing a USBL.
+    class USBL : public AcousticModem
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the comm device
+         \param deviceId an identification code of the device
+         \param minVerticalFOVDeg the minimum vertical angle of radiation pattern [deg]
+         \param maxVerticalFOVDeg the maximum vertical angle of radiation pattern [deg]
+         \param operatingRange the operating range [m]
+         */
+        USBL(std::string_view uniqueName, uint64_t deviceId, Scalar minVerticalFOVDeg, Scalar maxVerticalFOVDeg, Scalar operatingRange);
+        
+        //! A method used to enable the auto pinging of connected transponder to monitor its position.
+        /*!
+         \param rate how often the ping should be sent (0 for continuous mode) [Hz]
+         */
+        void EnableAutoPing(Scalar rate = Scalar(0));
+        
+        //! A method to diable the autp pinging funtion.
+        void DisableAutoPing();
+           
+        //! A method to get the current information about the acoustic beacons.
+        std::map<uint64_t, BeaconInfo>& GetBeaconInfo(); 
+
+        //! A method returning the type of the comm.
+        CommType GetType() const;
+       
+    protected:
+        //! A method performing internal comm state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        bool ping_;
+        Scalar pingRate_;
+        Scalar pingTime_;
+        std::map<uint64_t, BeaconInfo> beacons_;
+        bool noise_;
+        
+        static std::random_device randomDevice;
+        static std::mt19937 randomGenerator;
+    };
+}

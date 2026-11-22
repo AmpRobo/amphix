@@ -1,0 +1,155 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  SphericalJoint.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 2/3/13.
+//  Copyright (c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "joints/SphericalJoint.h"
+
+#include "BulletDynamics/Featherstone/btMultiBodyPoint2Point.h"
+#include "entities/SolidEntity.h"
+#include "entities/FeatherstoneEntity.h"
+
+namespace amphix
+{
+
+SphericalJoint::SphericalJoint(std::string_view uniqueName, SolidEntity* solidA, SolidEntity* solidB, const Vector3& pivot, bool collideLinked) : Joint(uniqueName, collideLinked)
+{
+    btRigidBody* bodyA = solidA->GetRigidBody();
+    btRigidBody* bodyB = solidB->GetRigidBody();
+    Vector3 pivotInA = bodyA->getCenterOfMassTransform().inverse() * pivot;
+    Vector3 pivotInB = bodyB->getCenterOfMassTransform().inverse() * pivot;
+    
+    constraint_ = std::make_unique<btPoint2PointConstraint>(*bodyA, *bodyB, pivotInA, pivotInB);
+    
+    jSolidA_ = solidA;
+    jSolidB_ = solidB;
+
+    sigDamping_ = Vector3(0.,0.,0.);
+    velDamping_ = Vector3(0.,0.,0.);
+    angleIC_ = Vector3(0.,0.,0.);
+}
+
+SphericalJoint::SphericalJoint(std::string_view uniqueName, SolidEntity* solid, FeatherstoneEntity* fe, int linkId, const Vector3& pivot, bool collideLinked) : Joint(uniqueName, collideLinked)
+{
+    Transform linkTransform = fe->GetLinkTransform(linkId+1);
+    Transform solidTransform = solid->GetCgTransform();
+    Vector3 pivotInA = linkTransform.inverse() * pivot;
+    Vector3 pivotInB = solidTransform.inverse() * pivot;
+    
+    std::unique_ptr<btMultiBodyPoint2Point> p2p = std::make_unique<btMultiBodyPoint2Point>(fe->GetMultiBody(), linkId, solid->GetRigidBody(), pivotInA, pivotInB);
+    p2p->setMaxAppliedImpulse(BT_LARGE_FLOAT);
+    mbConstraint_ = std::move(p2p);
+    
+    jSolidA_ = fe->GetLink(linkId+1).solid.get();
+    jSolidB_ = solid;
+
+    sigDamping_ = Vector3(0.,0.,0.);
+    velDamping_ = Vector3(0.,0.,0.);
+    angleIC_ = Vector3(0.,0.,0.);
+}
+
+void SphericalJoint::SetDamping(Vector3 constantFactor, Vector3 viscousFactor)
+{
+    if(IsMultibodyJoint())
+        return; 
+
+    for(int i = 0; i < 3; i++)
+    {
+        sigDamping_[i] = constantFactor[i] > Scalar(0.) ? constantFactor[i] : Scalar(0.);
+        velDamping_[i] = viscousFactor[i] > Scalar(0.) ? viscousFactor[i] : Scalar(0.);
+    }
+}
+
+void SphericalJoint::SetIc(Vector3 angles)
+{
+    angleIC_ = angles;
+}
+
+JointType SphericalJoint::GetType() const
+{
+    return JointType::SPHERICAL;
+}
+
+void SphericalJoint::ApplyTorque(Vector3 T)
+{
+    if(IsMultibodyJoint())
+        return;
+
+    btRigidBody& bodyA = constraint_->getRigidBodyA();
+    btRigidBody& bodyB = constraint_->getRigidBodyB();
+    Vector3 torque = T;
+    bodyA.applyTorque(torque);
+    bodyB.applyTorque(-torque);
+}
+
+void SphericalJoint::ApplyDamping()
+{
+    if(IsMultibodyJoint())
+        return;
+
+    if(sigDamping_.length2() > Scalar(0.) || velDamping_.length2() > Scalar(0.))
+    {
+        btRigidBody& bodyA = constraint_->getRigidBodyA();
+        btRigidBody& bodyB = constraint_->getRigidBodyB();
+        Vector3 relativeAV = bodyA.getAngularVelocity() - bodyB.getAngularVelocity();
+        Vector3 torque(0.,0.,0.);
+        
+        if(relativeAV.x() != Scalar(0.))
+            torque[0] = -(sigDamping_.x() * relativeAV.x()/fabs(relativeAV.x())) - velDamping_.x() * relativeAV.x();
+        if(relativeAV.y() != Scalar(0.))
+            torque[1] = -(sigDamping_.y() * relativeAV.y()/fabs(relativeAV.y())) - velDamping_.y() * relativeAV.y();
+        if(relativeAV.z() != Scalar(0.))
+            torque[2] = -(sigDamping_.z() * relativeAV.z()/fabs(relativeAV.z())) - velDamping_.z() * relativeAV.z();
+        
+        bodyA.applyTorque(torque);
+        bodyB.applyTorque(-torque);
+    }
+}
+
+std::vector<Renderable> SphericalJoint::Render()
+{
+    std::vector<Renderable> items(0);
+    if(constraint_ != nullptr)
+    {
+        Renderable item;
+        item.model = glm::mat4(1.f);
+        item.type = RenderableType::JOINT_LINES;
+        item.data = std::make_shared<std::vector<glm::vec3>>();
+        auto points = item.GetDataAsPoints();
+        
+        btPoint2PointConstraint* p2p = static_cast<btPoint2PointConstraint*>(constraint_.get());
+        Vector3 pivot = p2p->getRigidBodyA().getCenterOfMassTransform()(p2p->getPivotInA());
+        Vector3 A = p2p->getRigidBodyA().getCenterOfMassPosition();
+        Vector3 B = p2p->getRigidBodyB().getCenterOfMassPosition();
+        
+        points->push_back(glm::vec3(A.getX(), A.getY(), A.getZ()));
+        points->push_back(glm::vec3(pivot.getX(), pivot.getY(), pivot.getZ()));
+        points->push_back(glm::vec3(B.getX(), B.getY(), B.getZ()));
+        points->push_back(glm::vec3(pivot.getX(), pivot.getY(), pivot.getZ()));
+        
+        items.push_back(item);
+    }
+    return items;
+}
+
+}

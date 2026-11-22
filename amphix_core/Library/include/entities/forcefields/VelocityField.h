@@ -1,0 +1,69 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  VelocityField.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 10/07/18.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "AmphixCommon.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+    //! An enum representing the type of a velocity field.
+    enum class VelocityFieldType {UNIFORM, JET, PIPE};
+
+    //! An abstract class representing a velocity field.
+    class VelocityField
+    {
+    public:
+        //! A constructor.
+        VelocityField();
+        
+        //! A destructor.
+        virtual ~VelocityField() = default;
+        
+        //! A method returning velocity at a specified point.
+        /*!
+         \param p a point at which the velocity is requested
+         \return velocity [m/s]
+         */
+        virtual Vector3 GetVelocityAtPoint(const Vector3& p) const = 0;
+        
+        //! A method implementing the rendering of the velocity field.
+        virtual std::vector<Renderable> Render(VelocityFieldUBO& ubo) = 0;
+
+        //! A method to enable/disable the velocity field.
+        void SetEnabled(bool en);
+
+        //! A method informing if the velocity field is enabled.
+        bool IsEnabled() const;
+
+        //! A method returning the type of the velocity field.
+        virtual VelocityFieldType GetType() const = 0;
+
+    private:
+        bool enabled_;
+    };
+}
+

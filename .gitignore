@@ -66,3 +66,18 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Editor and local environments
+.vscode/
+.venv/
+
+# colcon workspace output
+install/
+log/
+
+# Documentation output
+docs/_build/
+amphix_core/docs/
+
+# Keep the Sphinx Makefile (excluded by the CMake "Makefile" rule above)
+!docs/Makefile

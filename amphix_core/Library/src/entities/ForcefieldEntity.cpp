@@ -1,0 +1,66 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  ForcefieldEntity.cpp
+//
+//
+//  Created by Patryk Cieslak on 1/3/13.
+//  Copyright (c) 2017-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "entities/ForcefieldEntity.h"
+
+#include "core/SimulationManager.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+
+ForcefieldEntity::ForcefieldEntity(std::string_view uniqueName) : Entity(uniqueName)
+{
+    ghost_ = std::make_unique<btPairCachingGhostObject>();
+    ghost_->setCollisionFlags(btCollisionObject::CF_NO_CONTACT_RESPONSE);
+}
+
+EntityType ForcefieldEntity::GetType() const
+{
+    return EntityType::FORCEFIELD;
+}
+
+btPairCachingGhostObject* ForcefieldEntity::GetGhost()
+{
+    return ghost_.get();
+}
+
+void ForcefieldEntity::AddToSimulation(SimulationManager* sm)
+{
+    sm->GetDynamicsWorld()->addCollisionObject(ghost_.get(), MASK_GHOST, MASK_DYNAMIC);
+}
+
+std::vector<Renderable> ForcefieldEntity::Render()
+{
+    return std::vector<Renderable>(0);
+}
+
+void ForcefieldEntity::GetAabb(Vector3& min, Vector3& max)
+{
+    min.setValue(BT_LARGE_FLOAT, BT_LARGE_FLOAT, BT_LARGE_FLOAT);
+    max.setValue(-BT_LARGE_FLOAT, -BT_LARGE_FLOAT, -BT_LARGE_FLOAT);
+}
+
+}

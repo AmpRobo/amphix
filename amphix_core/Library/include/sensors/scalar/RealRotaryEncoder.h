@@ -1,0 +1,60 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  RealRotaryEncoder.h
+//  Amphix
+//
+//  Created by Patryk Cieslak on 29/03/2014.
+//  Copyright (c) 2014-2026 Patryk Cieslak. All rights reserved.
+//
+
+#pragma once
+
+#include "sensors/scalar/RotaryEncoder.h"
+
+namespace amphix
+{
+    //! A class representing a rotary encoder with a specified resolution.
+    class RealRotaryEncoder : public RotaryEncoder
+    {
+    public:
+        //! A constructor.
+        /*!
+         \param uniqueName a name for the sensor
+         \param frequency the sampling frequency of the sensor [Hz] (-1 if updated every simulation step)
+         \param historyLength defines: -1 -> no history, 0 -> unlimited history, >0 -> history with a specified length
+         */
+        RealRotaryEncoder(std::string_view uniqueName, unsigned int cpr_resolution, bool absolute = false, Scalar frequency = Scalar(-1), int historyLength = -1);
+        
+        //! A method performing internal sensor state update.
+        /*!
+         \param dt the step time of the simulation [s]
+         */
+        void InternalUpdate(Scalar dt) override;
+        
+        //! A method that resets the sensor state.
+        void Reset();
+        
+        //! A method returning the type of the scalar sensor.
+        ScalarSensorType GetScalarSensorType() const override;
+        
+    private:
+        unsigned int cprResolution_;
+        unsigned int abs_;
+    };
+}

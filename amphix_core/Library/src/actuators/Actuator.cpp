@@ -1,0 +1,94 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  Actuator.cpp
+//  Amphix
+//
+//  Created by Patryk Cieslak on 1/8/13.
+//  Copyright (c) 2013-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "actuators/Actuator.h"
+
+#include "core/SimulationApp.h"
+#include "core/SimulationManager.h"
+#include "graphics/OpenGLContent.h"
+
+namespace amphix
+{
+
+void Actuator::DefaultDeleter(Actuator* a)
+{
+    delete a;
+}
+
+Actuator::Actuator(std::string_view uniqueName)
+{
+    name_ = SimulationApp::GetApp()->GetSimulationManager()->GetNameManager()->AddName(uniqueName);
+    dm_ = DisplayMode::GRAPHICAL;
+    SetWatchdog(Scalar(-1));
+}
+
+Actuator::~Actuator()
+{
+    if(SimulationApp::GetApp() != nullptr)
+        SimulationApp::GetApp()->GetSimulationManager()->GetNameManager()->RemoveName(name_);
+}
+
+void Actuator::SetDisplayMode(DisplayMode m)
+{
+    dm_ = m;
+}
+
+void Actuator::SetWatchdog(Scalar timeout)
+{
+    watchdogTimeout_ = timeout;
+    watchdog_ = Scalar(0);
+}
+
+const std::string& Actuator::GetName() const
+{
+    return name_;
+}
+
+void Actuator::Update(Scalar dt)
+{
+    if(watchdogTimeout_ > Scalar(0))
+    {
+        watchdog_ += dt;
+        if(watchdog_ > watchdogTimeout_)
+            WatchdogTimeout();
+    }
+}
+
+std::vector<Renderable> Actuator::Render()
+{
+    std::vector<Renderable> items(0);
+    return items;
+}
+
+void Actuator::WatchdogTimeout()
+{
+}
+
+void Actuator::ResetWatchdog()
+{
+    watchdog_ = Scalar(0);
+}
+
+}

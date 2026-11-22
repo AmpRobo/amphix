@@ -1,0 +1,71 @@
+/*    
+    This file is a part of Amphix.
+
+    Amphix is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Amphix is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+//
+//  JointActuator.cpp
+//  Amphix
+//
+//  Created by Patryk Cieślak on 23/11/2018.
+//  Copyright (c) 2018-2026 Patryk Cieslak. All rights reserved.
+//
+
+#include "actuators/JointActuator.h"
+
+#include "entities/FeatherstoneEntity.h"
+#include "joints/Joint.h"
+
+namespace amphix
+{
+
+JointActuator::JointActuator(std::string_view uniqueName) : Actuator(uniqueName)
+{
+    fe_ = nullptr;
+    jId_ = 0;
+    j_ = nullptr;
+}
+
+const std::string& JointActuator::GetJointName() const
+{
+    if(fe_ != nullptr)
+        return fe_->GetJointName(jId_);
+    else if(j_ != nullptr)
+        return j_->GetName();
+    else
+        throw std::runtime_error("Actuator '" + GetName() + "' not connected to any joint!");
+}
+
+void JointActuator::AttachToJoint(FeatherstoneEntity* multibody, unsigned int jointId)
+{
+    if(multibody != nullptr && jointId < multibody->GetNumOfJoints())
+    {
+        fe_ = multibody;
+        jId_ = jointId;
+    }
+}
+
+void JointActuator::AttachToJoint(Joint* joint)
+{
+    if(joint != nullptr)
+        j_ = joint;
+}
+
+ActuatorType JointActuator::GetType() const
+{
+    return ActuatorType::JOINT;
+}
+    
+}
